@@ -14,7 +14,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@specs-feup/clava": "^3.0.9",
+    "@specs-feup/clava": "^3.0.10",
     "typescript": "^5.8.2"
   }
 }
