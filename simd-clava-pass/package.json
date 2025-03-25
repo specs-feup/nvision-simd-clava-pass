@@ -1,0 +1,21 @@
+{
+  "name": "simd-clava-pass",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "dist/js/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clear": "rm -rf dist",
+    "build": "tsc",
+    "forloop": "npx clava classic dist/js/index.js -j -p src/input/forloop.c -o dist/",
+    "buildrunforloop": "npm run clear && npm run build && npm run forloop"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@specs-feup/clava": "^3.0.10",
+    "typescript": "^5.8.2",
+    "@specs-feup/clava-code-transforms": "^1.0.0"
+  }
+}

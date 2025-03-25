@@ -1,0 +1,3 @@
+[submodule "clava-code-transforms"]
+	path = clava-code-transforms
+	url = https://github.com/tiagolascasas/clava-code-transforms
