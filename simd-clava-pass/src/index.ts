@@ -1,10 +1,12 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Type, BuiltinType, TypedefType, Expression, Decl, Varref, BinaryOp, UnaryOp, Joinpoint } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Type, BuiltinType, TypedefType, Expression, Decl, Varref, BinaryOp, UnaryOp, Joinpoint, FunctionJp } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
+import { FoldingPropagationCombiner } from "@specs-feup/clava-code-transforms/FoldingPropagationCombiner";
+import VisualizationTool from "@specs-feup/clava-visualization/api/VisualizationTool.js"
 
 const int8_t: string = "int8_t";
 
-function isInt8(typed: Type | Expression | Decl): boolean {
+function isOfType(typed: Type | Expression | Decl, typeName: string) {
     let type: Type;
 
     if (typed instanceof Type) {
@@ -18,53 +20,47 @@ function isInt8(typed: Type | Expression | Decl): boolean {
     
     let typedefType: TypedefType = type as TypedefType;
     do {
-        if (typedefType.decl !== null && typedefType.decl.name === int8_t) return true;
+        if (typedefType.decl !== null && typedefType.decl.name === typeName) return true;
         if (!(typedefType.underlyingType instanceof TypedefType)) return false;
 
         typedefType = typedefType.underlyingType;
     } while (true);
 }
 
-function altersControlFlow(stmt: Statement) {
+function isInt8(typed: Type | Expression | Decl): boolean {
+    return isOfType(typed, int8_t);
+}
+
+function altersControlFlow(stmt: Statement): boolean {
     return stmt instanceof ReturnStmt || stmt instanceof GotoStmt || stmt instanceof Break || stmt instanceof Continue;
 }
 
-/**
- * Indicates whether "examinee"'s value is known at compile time when referenceJoinpoint is being executed.
- * For example, given a "i += a" statement, we might want to know whether the value of "a" is known.
- * This can be achieved by checking if the last assignment to "a" before the statement was done with a 
- * value known at compile time (with a literal, #define, expression of literal values, etc.)
- * @param referenceJoinpoint dictates where the assignments are searched from
- * @param examinee representation of the value to be searched. Could be a literal or a variable's name
- */
-function hasKnownValue(referenceJoinpoint: Joinpoint, examinee: string) {
-    // TODO: Check #defines and statically initialized (or last assigned) variables
-    return !Number.isNaN(parseInt(examinee));
+function isIntegerLiteral(value: string): boolean {
+    return !Number.isNaN(parseInt(value));
+}
+
+function isFloatLiteral(value: string): boolean {
+    return !Number.isNaN(parseFloat(value));
 }
 
 /**
- * Checks whether the loop's step value is constant or not. This is trivial if the step is "i++",
- * but it might also be "i += a", where a was assigned "1" right before the loop.
- * See the hasKnownValue function's documentation for more info
+ * Checks whether the loop's step value is a literal or an expression whose value is known at compile time (e.g. i++ is step value 1)
+ * For better results, use constant folding and propagation beforehand.
  * @param loop 
  * @returns 
  */
 function hasKnownStepValue(loop: Loop): boolean  {
-
-    return hasKnownValue(loop, loop.stepValue);
+    return isIntegerLiteral(loop.stepValue) || isFloatLiteral(loop.stepValue);
 }
 
 /**
- * Checks whether the loop's end value is constant or not, which is not trivial if the end value is not
- * a literal.
- * See the hasKnownValue function's documentation for more info
+ * Checks whether the loop's end value is a literal or not.
+ * For better results, use constant folding and propagation beforehand.
  * @param loop 
  * @returns 
  */
 function hasKnownEndValue(loop: Loop): boolean  {
-    // TODO: Check #defines and statically initialized (or last assigned) variables
-
-    return hasKnownValue(loop, loop.endValue);
+    return isIntegerLiteral(loop.endValue) || isFloatLiteral(loop.endValue);
 }
 
 function searchVariableAssignments(searchRoot: Joinpoint, variableName: string): BinaryOp[] {
@@ -192,14 +188,31 @@ function loopIsSuitable(loop: Loop, packingFactor: number): boolean {
     return loop.kind === "for" && hasRegularControlFlow(loop) && stepHasKnownNumberValue(loop, 1) && endValueIsDivisible(loop, packingFactor*2);
 }
 
-/*
-    I am first considering the case where the original value is an int8_t, since
-    nvision's instructions use 32 bit packed values, the packing factor is 4x!
-*/
-const packingFactor = 4; 
+async function main() {
+    /*
+        I am first considering the case where the original value is an int8_t, since
+        nvision's instructions use 32 bit packed values, the packing factor is 4x!
+    */
+    const packingFactor = 4; 
+    
+    const funcs: FunctionJp[] = Query.search(FunctionJp).get();
 
-const forLoops = Query.search(Loop, (loop: Loop) => loopIsSuitable(loop, packingFactor)).get();
+    const folder = new FoldingPropagationCombiner(false);
+    
+    for (const fn of funcs) {
+        const numPasses = folder.doPassesUntilStop(fn);
+        folder.doPassesUntilStop(fn);
+        folder.doPassesUntilStop(fn);
+        
+        console.log("Applied " + numPasses + " passes in function '" + fn.name + "'");
+    }
 
-console.log("Found " + forLoops.length + " forloops.")
+    console.log(Query.search(FunctionJp).getFirst()!.code);
+    await VisualizationTool.visualize(Query.root());
 
-// TODO: for (const loop of forLoops) applyTransformation(loop, 4);
+    const forLoops = Query.search(Loop, (loop: Loop) => loopIsSuitable(loop, packingFactor)).get();
+    console.log("Found " + forLoops.length + " forloops.")
+    // TODO: for (const loop of forLoops) applyTransformation(loop, 4);
+}
+
+await main();

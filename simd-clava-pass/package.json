@@ -15,7 +15,8 @@
   "description": "",
   "dependencies": {
     "@specs-feup/clava": "^3.0.10",
-    "typescript": "^5.8.2",
-    "@specs-feup/clava-code-transforms": "^1.0.0"
+    "@specs-feup/clava-code-transforms": "^1.0.0",
+    "@specs-feup/clava-visualization": "^1.0.5",
+    "typescript": "^5.8.2"
   }
 }
