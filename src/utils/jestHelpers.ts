@@ -21,3 +21,16 @@ export function registerSourceCode(code: string): void {
     Clava.getProgram().pop();
   });
 }
+
+/**
+ * In contrast to registerSourceCode, this simply pushes the AST onto the stack
+ * and then loads the code. It is up to the user to pop the AST after they're done
+ * with it
+ */
+export function registerSourceCodeOnce(code: string): void {
+    Clava.getProgram().push();
+    const program = Clava.getProgram();
+    const sourceFile = ClavaJoinPoints.fileWithSource("dummyFile.cpp", code);
+    program.addFile(sourceFile);
+    program.rebuild();
+}

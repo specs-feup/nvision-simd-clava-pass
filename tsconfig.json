@@ -1,7 +1,7 @@
 {
   "include": [
     "src/**/*.ts"
-, "src/constprop/simple.test.ts"  ],
+  ],
   "exclude": [
     "node_modules",
     "**/*.spec.ts",
