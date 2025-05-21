@@ -1,5 +1,5 @@
 void foo() {
-    int a = 0, b = 1;
+    int a = 0;
 
-    int c = a = 3;
+    int b = a = 3;
 }

@@ -1,5 +1,5 @@
 import { registerSourceCodeOnce } from "../utils/jestHelpers.js"
-import { Vardecl, ReturnStmt, Literal } from "@specs-feup/clava/api/Joinpoints.js";
+import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp } from "@specs-feup/clava/api/Joinpoints.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
@@ -12,6 +12,11 @@ const simpleCode = fs.readFileSync("./src/input/constprop/simple.c", "utf-8");
 const separateAssignmentCode = fs.readFileSync("./src/input/constprop/separate_assignment.c", "utf-8");
 const simpleAlterationCode = fs.readFileSync("./src/input/constprop/simple_alteration.c", "utf-8");
 const hiddenAlterationCode = fs.readFileSync("./src/input/constprop/hidden_alteration.c", "utf-8");
+const readWriteCode = fs.readFileSync("./src/input/constprop/readwrite_isnt_propagated.c", "utf-8");
+const addressofCode = fs.readFileSync("./src/input/constprop/doesnt_substitute_in_addressof.c", "utf-8");
+const complexPropagationCode = fs.readFileSync("./src/input/constprop/complex_propagations.c", "utf-8");
+const forloopStepCode = fs.readFileSync("./src/input/constprop/forloop_step_isnt_affected.c", "utf-8");
+const forloopLookAheadCode = fs.readFileSync("./src/input/constprop/forloop_lookahead.c", "utf-8");
 
 afterEach(() => {
     Clava.getProgram().pop();
@@ -140,4 +145,26 @@ describe("hidden alteration test case", () => {
         expect(isDeclaredWithLiteral(dVarDecl!)).toBe(true);
         expect(dVarDecl!.children.at(0)?.code).toBe("7");
     });
+
+    describe("readwrite test case", () => {
+        registerSourceCodeOnce(readWriteCode);
+        propagateConstants();
+
+        test("b's declaration still contains a reference to a", () => {
+            const bVarDecl = Query.search(Vardecl, /b/).getFirst();
+
+            expect(bVarDecl).toBeDefined();
+            expect(bVarDecl).not.toBeNull();
+
+            const innerAssignmentBinaryOp: BinaryOp | undefined = Query.searchFrom(bVarDecl!, BinaryOp).getFirst();
+
+            expect(innerAssignmentBinaryOp).toBeDefined();
+            expect(innerAssignmentBinaryOp).not.toBeNull();
+
+            expect(Query.searchFrom(innerAssignmentBinaryOp!, Varref, /a/).get()).toHaveLength(1);
+
+            expect(Query.search(Literal).get()).toHaveLength(2);
+        });
+    });
+
 })
