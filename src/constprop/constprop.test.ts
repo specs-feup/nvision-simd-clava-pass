@@ -1,6 +1,6 @@
 import { registerSourceCodeOnce } from "../utils/jestHelpers.js";
 import { isAddressofToVar } from "../utils/unaryOperations.js";
-import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op } from "@specs-feup/clava/api/Joinpoints.js";
+import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op, Loop } from "@specs-feup/clava/api/Joinpoints.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
@@ -204,6 +204,88 @@ describe("addressof test case", () => {
         expect(bVarDecl?.children).toHaveLength(1);
         expect(bVarDecl?.children.at(0)).toBeInstanceOf(Op);
         expect(isAddressofToVar((bVarDecl?.children.at(0) as Op), aVarDecl!)).toBe(true);
+    });
+});
 
+describe("complex propagation test case", () => {
+    test("bar's call uses a literal and it's '3'", () => {
+        registerSourceCodeOnce(addressofCode);
+        propagateConstants();
+
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        expect(aVarDecl).toBeDefined();
+        expect(aVarDecl).not.toBeNull();
+
+        const barCall: Call | undefined = Query.search(Call, /bar/).getFirst();
+        expect(barCall).toBeDefined();
+        expect(barCall).not.toBeNull();
+
+        expect(barCall?.children).toHaveLength(2);
+        expect(barCall?.children.at(1)).toBeInstanceOf(Literal);
+        expect(barCall?.children.at(1)?.code).toBe("3");
+    });
+
+    test("the varref to a in the while's header has been replaced with a literal '3'", () => {
+        registerSourceCodeOnce(addressofCode);
+        propagateConstants();
+
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        expect(aVarDecl).toBeDefined();
+        expect(aVarDecl).not.toBeNull();
+
+        const whileLoop: Loop | undefined = Query.search(Loop, {
+            kind: "while"
+        }).getFirst();
+
+        expect(whileLoop).toBeDefined();
+        expect(whileLoop).not.toBeNull();
+
+        const whileBinaryOp: BinaryOp | undefined = Query.searchFrom(whileLoop!, BinaryOp).getFirst();
+
+        expect(whileBinaryOp).toBeDefined();
+        expect(whileBinaryOp).not.toBeNull();
+        expect(whileBinaryOp?.children).toHaveLength(2);
+        expect(whileBinaryOp?.children.at(0)).toBeInstanceOf(Literal);
+        expect(whileBinaryOp?.children.at(0)?.code).toBe("3");
+
+    });
+
+        test("the forloop's header has been correctly modified", () => {
+        registerSourceCodeOnce(addressofCode);
+        propagateConstants();
+
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        expect(aVarDecl).toBeDefined();
+        expect(aVarDecl).not.toBeNull();
+
+        const forLoop: Loop | undefined = Query.search(Loop, {
+            kind: "for"
+        }).getFirst();
+
+        expect(forLoop).toBeDefined();
+        expect(forLoop).not.toBeNull();
+
+        expect(Query.searchFrom(forLoop!, Varref, /a/).get()).toHaveLength(0);
+
+        const iVarDecl: Vardecl | undefined = Query.searchFrom(forLoop!, Vardecl, /i/).getFirst();
+
+        expect(iVarDecl).toBeDefined();
+        expect(iVarDecl).not.toBeNull();
+        expect(iVarDecl?.children).toHaveLength(1);
+        expect(iVarDecl?.children.at(0)).toBeInstanceOf(Literal);
+        expect(iVarDecl?.children.at(0)?.code).toBe('3');
+
+
+        const forBinaryOp: BinaryOp | undefined = Query.searchFrom(forLoop!, BinaryOp, {
+            kind: "add"
+        }).getFirst();
+
+        expect(forBinaryOp).toBeDefined();
+        expect(forBinaryOp).not.toBeNull();
+        expect(forBinaryOp?.children).toHaveLength(2);
+        expect(forBinaryOp?.children.at(0)).toBeInstanceOf(Literal);
+        expect(forBinaryOp?.children.at(0)?.code).toBe("3");
+        expect(forBinaryOp?.children.at(1)).toBeInstanceOf(Literal);
+        expect(forBinaryOp?.children.at(1)?.code).toBe("1");
     });
 });
