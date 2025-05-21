@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "clear": "rm -rf dist",
+    "clearall": "rm -rf dist node_modules package-lock.json",
     "build": "tsc",
     "forloop": "npx clava classic dist/js/index.js -j -p src/input/forloop.c -o dist/",
     "buildrunforloop": "npm run clear && npm run build && npm run forloop"
