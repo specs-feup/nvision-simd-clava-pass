@@ -1,5 +1,6 @@
 import { registerSourceCodeOnce } from "../utils/jestHelpers.js";
 import { isAddressofToVar } from "../utils/unaryOperations.js";
+import { isVarrefOf } from "../utils/varReferences.js";
 import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op, Loop } from "@specs-feup/clava/api/Joinpoints.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import Query from "@specs-feup/lara/api/weaver/Query.js";
@@ -287,5 +288,40 @@ describe("complex propagation test case", () => {
         expect(forBinaryOp?.children.at(0)?.code).toBe("3");
         expect(forBinaryOp?.children.at(1)).toBeInstanceOf(Literal);
         expect(forBinaryOp?.children.at(1)?.code).toBe("1");
+    });
+});
+
+describe("forloop step test case", () => {
+    test("first loop's header remains the same", () => {
+        registerSourceCodeOnce(forloopStepCode);
+        propagateConstants();
+
+        const firstForLoop: Loop | undefined = Query.search(Loop).getFirst();
+        expect(firstForLoop).toBeDefined();
+        expect(firstForLoop).not.toBeNull();
+
+        expect(Query.searchFrom(firstForLoop!, Varref, /i/).get()).toHaveLength(2);
+    });
+
+    test("second loop's header remains the same", () => {
+        registerSourceCodeOnce(forloopStepCode);
+        propagateConstants();
+
+        const secondForLoop: Loop | undefined = Query.search(Loop).get().at(1);
+        expect(secondForLoop).toBeDefined();
+        expect(secondForLoop).not.toBeNull();
+
+        const jVarDecl: Vardecl | undefined = Query.searchFrom(secondForLoop!, Vardecl, /j/).getFirst();
+        expect(jVarDecl).toBeDefined();
+        expect(jVarDecl).not.toBeNull();
+
+        const binaryOp: BinaryOp | undefined = Query.searchFrom(secondForLoop!, BinaryOp, {
+            kind: "lt"
+        }).getFirst();
+
+        expect(binaryOp).toBeDefined();
+        expect(binaryOp).not.toBeNull();
+
+        expect(isVarrefOf(binaryOp?.left!, jVarDecl!)).toBe(true);
     });
 });
