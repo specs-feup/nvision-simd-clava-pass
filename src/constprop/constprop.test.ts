@@ -209,7 +209,7 @@ describe("addressof test case", () => {
 
 describe("complex propagation test case", () => {
     test("bar's call uses a literal and it's '3'", () => {
-        registerSourceCodeOnce(addressofCode);
+        registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
 
         const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
@@ -226,7 +226,7 @@ describe("complex propagation test case", () => {
     });
 
     test("the varref to a in the while's header has been replaced with a literal '3'", () => {
-        registerSourceCodeOnce(addressofCode);
+        registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
 
         const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
@@ -250,8 +250,8 @@ describe("complex propagation test case", () => {
 
     });
 
-        test("the forloop's header has been correctly modified", () => {
-        registerSourceCodeOnce(addressofCode);
+    test("the forloop's header has been correctly modified", () => {
+        registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
 
         const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
