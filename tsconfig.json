@@ -1,17 +1,23 @@
 {
-    "include": ["src/**/*.ts"],
-    "exclude": ["node_modules", "**/*.spec.ts", "**/*.test.ts"],
-    "compilerOptions": {
-      "outDir": "dist/js",
-      "target": "ES2022",
-      "module": "NodeNext",
-      "declaration": true,
-      "strict": true,
-      "allowJs": false,
-      "moduleResolution": "NodeNext",
-      "sourceMap": true,
-      "declarationMap": true,
-      "allowSyntheticDefaultImports": true
-      //"esModuleInterop": true
-    }
+  "include": [
+    "src/**/*.ts"
+, "src/constprop/simple.test.ts"  ],
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
+  "compilerOptions": {
+    "outDir": "dist/js",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "declaration": true,
+    "strict": true,
+    "allowJs": false,
+    "moduleResolution": "NodeNext",
+    "sourceMap": true,
+    "declarationMap": true,
+    "allowSyntheticDefaultImports": true
+    //"esModuleInterop": true
   }
+}
