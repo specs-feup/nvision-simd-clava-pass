@@ -3,9 +3,10 @@ import { Vardecl } from "@specs-feup/clava/api/Joinpoints.js";
 
 /**
  * Returns the uppermost Vardecl of all global variables.
- * In the case of a global extern variable, it will try to find its actual declaration (in another file). If it does find it, only that declaration is present.
+ * In the case of a global extern variable, it will try 
+ * to find its actual declaration (in another file).
+ * If it does find it, only that declaration is present.
  * Otherwise, the "extern" declaration is included.
- * @returns 
  */
 export function getGlobalVariableDeclarations(): Vardecl[] {
     const globalVariableDeclarations = Query.search(Vardecl, (vardecl) => vardecl.isGlobal).get().map(varDecl => varDecl.definition ?? varDecl);
@@ -21,6 +22,9 @@ export function getGlobalVariableDeclarations(): Vardecl[] {
     });
 }
 
+/**
+ * Searches all global variables and returns their names in a string array 
+ */
 export function getGlobalVariableNames(): string[] {
     return getGlobalVariableDeclarations().map(varDecl => varDecl.name);
 }

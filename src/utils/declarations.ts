@@ -1,5 +1,9 @@
 import { Vardecl, Varref, Literal } from "@specs-feup/clava/api/Joinpoints.js";
 
+/**
+ * Checks if a variable is initialized with just a Literal
+ * (operations with just literals don't count)
+ */
 export function isDeclaredWithLiteral(variable: Vardecl | Varref): boolean {
     let varDecl: Vardecl;
 
@@ -9,7 +13,9 @@ export function isDeclaredWithLiteral(variable: Vardecl | Varref): boolean {
         varDecl = variable.decl as Vardecl;
     }
 
-    // handles cases where varDecl is just the extern declaration and not the actual declaration/initialization. read Vardecl.definition's documentation for more info.
+    // handles cases where varDecl is just the extern declaration 
+    // and not the actual declaration/initialization. 
+    // read Vardecl.definition's documentation for more info.
     varDecl = varDecl.definition ?? varDecl;
 
     // the value which is assigned is varDecl's only child node
@@ -22,8 +28,6 @@ export function isDeclaredWithLiteral(variable: Vardecl | Varref): boolean {
 
 /**
  * Returns a mapping of a variable's name to its Literal. If the declaration was not initialized with a literal, it will not be present in the map.
- * @param decls 
- * @returns 
  */
 export function mapToVariableNameAndLiteral(decls: Vardecl[]): Map<string, Literal> {
     const map = new Map<string, Literal>();

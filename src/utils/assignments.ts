@@ -51,9 +51,6 @@ export function getAllDerrefAssignments(varDecl: Vardecl): Op[] {
  * Reassigning the pointer variable to another address inside the function body, which may lead to the original variable's
  * value not actually being modified, is not checked for, and so it might return operations that do not actually modify
  * the variable.
- * 
- * @param varDecl 
- * @returns 
  */
 export function getAllIndirectAssignments(varDecl: Vardecl): Op[] {
     const functionParametersThatArePointersToVar = getAllReferencesToVariablePassedToFunctions(varDecl).map(functionArgument => functionArgument.argumentDecl);

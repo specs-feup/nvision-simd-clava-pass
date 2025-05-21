@@ -1,5 +1,13 @@
 import { Expression, Joinpoint, Op } from "@specs-feup/clava/api/Joinpoints.js";
 
+/**
+ *  Walks upwards on the JoinPoint tree, starting from the provided Expression,
+ * until it finds the first Op JoinPoint and returns it.
+ * 
+ * @throws Error if the provided Expression JoinPoint is not a descendant
+ * of any Op JoinPoint.
+ */
+
 export function getParentOp(expr: Expression): Op {
     let jp: Joinpoint = expr;
         while (true) {
