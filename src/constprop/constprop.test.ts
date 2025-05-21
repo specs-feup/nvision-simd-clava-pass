@@ -325,3 +325,27 @@ describe("forloop step test case", () => {
         expect(isVarrefOf(binaryOp?.left!, jVarDecl!)).toBe(true);
     });
 });
+
+describe("forloop lookahead test case", () => {
+    test("first forloop header doesn't change", () => {
+        registerSourceCodeOnce(forloopLookAheadCode);
+        propagateConstants();
+
+        const firstForLoop: Loop | undefined = Query.search(Loop).getFirst();
+        expect(firstForLoop).toBeDefined();
+        expect(firstForLoop).not.toBeNull();
+
+        expect(Query.searchFrom(firstForLoop!, Varref, { use: "read", name: "a" }).get()).toHaveLength(1);
+    });
+
+    test("second forloop header doesn't change", () => {
+        registerSourceCodeOnce(forloopLookAheadCode);
+        propagateConstants();
+
+        const secondForLoop: Loop | undefined = Query.search(Loop).get().at(1);
+        expect(secondForLoop).toBeDefined();
+        expect(secondForLoop).not.toBeNull();
+
+        expect(Query.searchFrom(secondForLoop!, Varref, { use: "read", name: "a" }).get()).toHaveLength(1);
+    });
+});
