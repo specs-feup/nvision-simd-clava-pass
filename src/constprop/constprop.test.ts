@@ -1,5 +1,6 @@
-import { registerSourceCodeOnce } from "../utils/jestHelpers.js"
-import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp } from "@specs-feup/clava/api/Joinpoints.js";
+import { registerSourceCodeOnce } from "../utils/jestHelpers.js";
+import { isAddressofToVar } from "../utils/unaryOperations.js";
+import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op } from "@specs-feup/clava/api/Joinpoints.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
@@ -145,26 +146,64 @@ describe("hidden alteration test case", () => {
         expect(isDeclaredWithLiteral(dVarDecl!)).toBe(true);
         expect(dVarDecl!.children.at(0)?.code).toBe("7");
     });
+});
 
-    describe("readwrite test case", () => {
+describe("readwrite test case", () => {
+    test("b's declaration still contains a reference to a", () => {
         registerSourceCodeOnce(readWriteCode);
         propagateConstants();
 
-        test("b's declaration still contains a reference to a", () => {
-            const bVarDecl = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl = Query.search(Vardecl, /b/).getFirst();
 
-            expect(bVarDecl).toBeDefined();
-            expect(bVarDecl).not.toBeNull();
+        expect(bVarDecl).toBeDefined();
+        expect(bVarDecl).not.toBeNull();
 
-            const innerAssignmentBinaryOp: BinaryOp | undefined = Query.searchFrom(bVarDecl!, BinaryOp).getFirst();
+        const innerAssignmentBinaryOp: BinaryOp | undefined = Query.searchFrom(bVarDecl!, BinaryOp).getFirst();
 
-            expect(innerAssignmentBinaryOp).toBeDefined();
-            expect(innerAssignmentBinaryOp).not.toBeNull();
+        expect(innerAssignmentBinaryOp).toBeDefined();
+        expect(innerAssignmentBinaryOp).not.toBeNull();
 
-            expect(Query.searchFrom(innerAssignmentBinaryOp!, Varref, /a/).get()).toHaveLength(1);
+        expect(Query.searchFrom(innerAssignmentBinaryOp!, Varref, /a/).get()).toHaveLength(1);
 
-            expect(Query.search(Literal).get()).toHaveLength(2);
-        });
+        expect(Query.search(Literal).get()).toHaveLength(2);
+    });
+});
+
+describe("addressof test case", () => {
+    test("bar's invocation still contains a reference to a", () => {
+        registerSourceCodeOnce(addressofCode);
+        propagateConstants();
+
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        expect(aVarDecl).toBeDefined();
+        expect(aVarDecl).not.toBeNull();
+
+        const barCall: Call | undefined = Query.search(Call, /bar/).getFirst();
+
+        expect(barCall).toBeDefined();
+        expect(barCall).not.toBeNull();
+
+        expect(barCall?.children).toHaveLength(2);
+        expect(barCall?.children.at(1)).toBeInstanceOf(Op);
+        expect(isAddressofToVar((barCall?.children.at(1) as Op), aVarDecl!)).toBe(true);
     });
 
-})
+    test("b's declaration still contains a reference to a", () => {
+        registerSourceCodeOnce(addressofCode);
+        propagateConstants();
+
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        expect(aVarDecl).toBeDefined();
+        expect(aVarDecl).not.toBeNull();
+
+        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, /b/).getFirst();
+
+        expect(bVarDecl).toBeDefined();
+        expect(bVarDecl).not.toBeNull();
+
+        expect(bVarDecl?.children).toHaveLength(1);
+        expect(bVarDecl?.children.at(0)).toBeInstanceOf(Op);
+        expect(isAddressofToVar((bVarDecl?.children.at(0) as Op), aVarDecl!)).toBe(true);
+
+    });
+});
