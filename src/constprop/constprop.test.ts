@@ -1,7 +1,7 @@
 import { registerSourceCodeOnce } from "../utils/jestHelpers.js";
 import { isAddressofToVar } from "../utils/unaryOperations.js";
 import { isVarrefOf } from "../utils/varReferences.js";
-import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op, Loop } from "@specs-feup/clava/api/Joinpoints.js";
+import { Vardecl, ReturnStmt, Literal, Varref, BinaryOp, Call, Op, Loop, Joinpoint } from "@specs-feup/clava/api/Joinpoints.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
@@ -29,6 +29,7 @@ describe("simple test case", () => {
     test("correct number of varDecls", () => {
         registerSourceCodeOnce(simpleCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
         const varDecls: Vardecl[] = Query.search(Vardecl).get();
         expect(varDecls).toHaveLength(5);
@@ -73,8 +74,9 @@ describe("separate assignment test case", () => {
     test("b is declared with a literal", () => {
         registerSourceCodeOnce(separateAssignmentCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "b" }).getFirst();
         expect(bVarDecl).toBeDefined();
         expect(bVarDecl).not.toBeNull();
         expect(isDeclaredWithLiteral(bVarDecl!)).toBe(true);
@@ -99,8 +101,9 @@ describe("simple alteration test case", () => {
     test("b is not initialized with a literal", () => {
         registerSourceCodeOnce(simpleAlterationCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "b" }).getFirst();
         expect(bVarDecl).toBeDefined();
         expect(bVarDecl).not.toBeNull();
         expect(isDeclaredWithLiteral(bVarDecl!)).toBe(false);
@@ -110,7 +113,7 @@ describe("simple alteration test case", () => {
         registerSourceCodeOnce(simpleAlterationCode);
         propagateConstants();
 
-        const dVarDecl: Vardecl | undefined = Query.search(Vardecl, /d/).getFirst();
+        const dVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "d" }).getFirst();
         expect(dVarDecl).toBeDefined();
         expect(dVarDecl).not.toBeNull();
         expect(isDeclaredWithLiteral(dVarDecl!)).toBe(false);
@@ -130,8 +133,9 @@ describe("hidden alteration test case", () => {
     test("b isn't initialized with a literal", () => {
         registerSourceCodeOnce(hiddenAlterationCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "b" }).getFirst();
         expect(bVarDecl).toBeDefined();
         expect(bVarDecl).not.toBeNull();
         expect(isDeclaredWithLiteral(bVarDecl!)).toBe(false);
@@ -141,7 +145,7 @@ describe("hidden alteration test case", () => {
         registerSourceCodeOnce(hiddenAlterationCode);
         propagateConstants();
 
-        const dVarDecl: Vardecl | undefined = Query.search(Vardecl, /d/).getFirst();
+        const dVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "d" }).getFirst();
         expect(dVarDecl).toBeDefined();
         expect(dVarDecl).not.toBeNull();
         expect(isDeclaredWithLiteral(dVarDecl!)).toBe(true);
@@ -153,8 +157,9 @@ describe("readwrite test case", () => {
     test("b's declaration still contains a reference to a", () => {
         registerSourceCodeOnce(readWriteCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const bVarDecl = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl = Query.search(Vardecl, { name: "b" }).getFirst();
 
         expect(bVarDecl).toBeDefined();
         expect(bVarDecl).not.toBeNull();
@@ -164,7 +169,7 @@ describe("readwrite test case", () => {
         expect(innerAssignmentBinaryOp).toBeDefined();
         expect(innerAssignmentBinaryOp).not.toBeNull();
 
-        expect(Query.searchFrom(innerAssignmentBinaryOp!, Varref, /a/).get()).toHaveLength(1);
+        expect(Query.searchFrom(innerAssignmentBinaryOp!, Varref, { name: "a" }).get()).toHaveLength(1);
 
         expect(Query.search(Literal).get()).toHaveLength(2);
     });
@@ -174,12 +179,13 @@ describe("addressof test case", () => {
     test("bar's invocation still contains a reference to a", () => {
         registerSourceCodeOnce(addressofCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "a" }).getFirst();
         expect(aVarDecl).toBeDefined();
         expect(aVarDecl).not.toBeNull();
 
-        const barCall: Call | undefined = Query.search(Call, /bar/).getFirst();
+        const barCall: Call | undefined = Query.search(Call, { name: "bar" }).getFirst();
 
         expect(barCall).toBeDefined();
         expect(barCall).not.toBeNull();
@@ -192,12 +198,13 @@ describe("addressof test case", () => {
     test("b's declaration still contains a reference to a", () => {
         registerSourceCodeOnce(addressofCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "a" }).getFirst();
         expect(aVarDecl).toBeDefined();
         expect(aVarDecl).not.toBeNull();
 
-        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, /b/).getFirst();
+        const bVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "b" }).getFirst();
 
         expect(bVarDecl).toBeDefined();
         expect(bVarDecl).not.toBeNull();
@@ -212,12 +219,13 @@ describe("complex propagation test case", () => {
     test("bar's call uses a literal and it's '3'", () => {
         registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
-        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "a" }).getFirst();
         expect(aVarDecl).toBeDefined();
         expect(aVarDecl).not.toBeNull();
 
-        const barCall: Call | undefined = Query.search(Call, /bar/).getFirst();
+        const barCall: Call | undefined = Query.search(Call, { name: "bar" }).getFirst();
         expect(barCall).toBeDefined();
         expect(barCall).not.toBeNull();
 
@@ -230,7 +238,7 @@ describe("complex propagation test case", () => {
         registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
 
-        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "a" }).getFirst();
         expect(aVarDecl).toBeDefined();
         expect(aVarDecl).not.toBeNull();
 
@@ -248,14 +256,13 @@ describe("complex propagation test case", () => {
         expect(whileBinaryOp?.children).toHaveLength(2);
         expect(whileBinaryOp?.children.at(0)).toBeInstanceOf(Literal);
         expect(whileBinaryOp?.children.at(0)?.code).toBe("3");
-
     });
 
     test("the forloop's header has been correctly modified", () => {
         registerSourceCodeOnce(complexPropagationCode);
         propagateConstants();
 
-        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, /a/).getFirst();
+        const aVarDecl: Vardecl | undefined = Query.search(Vardecl, { name: "a" }).getFirst();
         expect(aVarDecl).toBeDefined();
         expect(aVarDecl).not.toBeNull();
 
@@ -266,16 +273,15 @@ describe("complex propagation test case", () => {
         expect(forLoop).toBeDefined();
         expect(forLoop).not.toBeNull();
 
-        expect(Query.searchFrom(forLoop!, Varref, /a/).get()).toHaveLength(0);
+        expect(Query.searchFrom(forLoop!, Varref, { name: "a" }).get()).toHaveLength(0);
 
-        const iVarDecl: Vardecl | undefined = Query.searchFrom(forLoop!, Vardecl, /i/).getFirst();
+        const iVarDecl: Vardecl | undefined = Query.searchFrom(forLoop!, Vardecl, { name: "i" }).getFirst();
 
         expect(iVarDecl).toBeDefined();
         expect(iVarDecl).not.toBeNull();
         expect(iVarDecl?.children).toHaveLength(1);
         expect(iVarDecl?.children.at(0)).toBeInstanceOf(Literal);
         expect(iVarDecl?.children.at(0)?.code).toBe('3');
-
 
         const forBinaryOp: BinaryOp | undefined = Query.searchFrom(forLoop!, BinaryOp, {
             kind: "add"
@@ -295,12 +301,13 @@ describe("forloop step test case", () => {
     test("first loop's header remains the same", () => {
         registerSourceCodeOnce(forloopStepCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
         const firstForLoop: Loop | undefined = Query.search(Loop).getFirst();
         expect(firstForLoop).toBeDefined();
         expect(firstForLoop).not.toBeNull();
 
-        expect(Query.searchFrom(firstForLoop!, Varref, /i/).get()).toHaveLength(2);
+        expect(Query.searchFrom(firstForLoop!, Varref, { name: "i" }).get()).toHaveLength(2);
     });
 
     test("second loop's header remains the same", () => {
@@ -311,7 +318,7 @@ describe("forloop step test case", () => {
         expect(secondForLoop).toBeDefined();
         expect(secondForLoop).not.toBeNull();
 
-        const jVarDecl: Vardecl | undefined = Query.searchFrom(secondForLoop!, Vardecl, /j/).getFirst();
+        const jVarDecl: Vardecl | undefined = Query.searchFrom(secondForLoop!, Vardecl, { name: "j" }).getFirst();
         expect(jVarDecl).toBeDefined();
         expect(jVarDecl).not.toBeNull();
 
@@ -330,6 +337,7 @@ describe("forloop lookahead test case", () => {
     test("first forloop header doesn't change", () => {
         registerSourceCodeOnce(forloopLookAheadCode);
         propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
 
         const firstForLoop: Loop | undefined = Query.search(Loop).getFirst();
         expect(firstForLoop).toBeDefined();

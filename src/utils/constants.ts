@@ -1,5 +1,5 @@
-import { Vardecl } from "@specs-feup/clava/api/Joinpoints.js";
-import { getAllDirectAssignments, getAllIndirectAssignments } from "./assignments.js";
+import { Joinpoint, Vardecl } from "@specs-feup/clava/api/Joinpoints.js";
+import { getAllDirectAssignments, getAllDirectAssignmentsIn, getAllIndirectAssignments, getAllIndirectAssignmentsIn } from "./assignments.js";
 
 /**
  * Checks whether a variable is modified at any part of the program.
@@ -12,6 +12,13 @@ import { getAllDirectAssignments, getAllIndirectAssignments } from "./assignment
  * This function does not account for account for unreachable code.
  * A pointer to a pointer to a variable, and further indirection
  * levels, are not be checked.
+ */
+export function isConstantIn(baseJp: Joinpoint, varDecl: Vardecl): boolean {
+    return [...getAllDirectAssignmentsIn(baseJp, varDecl), ...getAllIndirectAssignmentsIn(baseJp, varDecl)].length === 0;
+}
+
+/**
+ * Same as isContantIn but uses the root as the base joinpoint
  */
 export function isConstant(varDecl: Vardecl): boolean {
     return [...getAllDirectAssignments(varDecl), ...getAllIndirectAssignments(varDecl)].length === 0;
