@@ -1,5 +1,8 @@
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js";
+import { LaraJoinPoint } from "@specs-feup/lara/api/LaraJoinPoint.js";
+import { Filter_WrapperVariant } from "@specs-feup/lara/api/weaver/Selector.js";
+import Query from "@specs-feup/lara/api/weaver/Query.js";
 
 /**
  * Duplicated from @specs-feup/lara/jest because of weird errors when importing from there...
@@ -33,4 +36,20 @@ export function registerSourceCodeOnce(code: string): void {
     const sourceFile = ClavaJoinPoints.fileWithSource("dummyFile.cpp", code);
     program.addFile(sourceFile);
     program.rebuild();
+}
+
+export function getFirstAndExpectExists<T extends typeof LaraJoinPoint>(
+    type: T,
+    filter?: Filter_WrapperVariant<T>
+): InstanceType<T> {
+    const jp = Query.search(type, filter).getFirst();
+
+    return expectExists(jp);
+}
+
+export function expectExists<LaraJoinPoint>(jp: LaraJoinPoint | undefined): LaraJoinPoint {
+    expect(jp).toBeDefined();
+    expect(jp).not.toBeNull();
+
+    return jp!;
 }
