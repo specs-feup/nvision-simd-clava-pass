@@ -295,3 +295,47 @@ describe("forloop lookahead test case", () => {
         expect(Query.searchFrom(secondForLoop!, Varref, { use: "read", name: "a" }).get()).toHaveLength(1);
     });
 });
+
+describe("loop continuity test case", () => {
+    test("i remains unaltered", () => {
+        registerSourceCodeOnce(loopContinuityCode);
+        propagateConstants();
+
+        const iDecl = getFirstAndExpectExists(Vardecl, { name: "i" });
+
+        const allVarIReferences = Query.search(Varref, { name: "i" }).get();
+        expect(allVarIReferences).toHaveLength(2);
+
+        const whileCond = expectExists(Query.search(Loop).search(BinaryOp, { kind: "lt" }).getFirst());
+        const leftExpr: Expression = expectExists(whileCond.left);
+
+        expect(isVarrefOf(leftExpr, iDecl));
+
+        const iIncreaseVarref = expectExists(Query.search(Loop).search(Varref, { name: "i", use: "readwrite" }).getFirst());
+        expect(iIncreaseVarref.parent).toBeInstanceOf(UnaryOp);
+        expect((iIncreaseVarref.parent as UnaryOp).kind).toBe("pre_inc");
+    });
+
+    test("a remains unaltered", () => {
+        registerSourceCodeOnce(loopContinuityCode);
+        propagateConstants();
+
+        const aDecl = getFirstAndExpectExists(Vardecl, { name: "a" });
+        const bDecl = getFirstAndExpectExists(Vardecl, { name: "b" });
+
+        const allVarAReferences = Query.search(Varref, { name: "a" }).get();
+        expect(allVarAReferences).toHaveLength(2);
+
+        const bAssignment = expectExists(Query.search(Loop).search(BinaryOp, { kind: "assign" }).getFirst());
+
+        const leftExpr: Expression = expectExists(bAssignment.left);
+        const rightExpr: Expression = expectExists(bAssignment.right);
+
+        expect(isVarrefOf(leftExpr, bDecl));
+        expect(isVarrefOf(rightExpr, aDecl));
+
+        const aIncreaseVarref = expectExists(Query.search(Loop).search(Varref, { name: "a", use: "readwrite" }).getFirst());
+        expect(aIncreaseVarref.parent).toBeInstanceOf(UnaryOp);
+        expect((aIncreaseVarref.parent as UnaryOp).kind).toBe("post_inc");
+    });
+});
