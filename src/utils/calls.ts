@@ -39,7 +39,7 @@ export function getAllReferencesToVariablePassedToFunctionsIn(baseJp: Joinpoint,
         for (const argumentIndex of argumentIndices) {
             functionArguments.push({
                 functionJp: call.function,
-                argumentDecl: call.function.params[argumentIndex] 
+                argumentDecl: call.function.params[argumentIndex]
             });
         }
     }
@@ -52,4 +52,60 @@ export function getAllReferencesToVariablePassedToFunctionsIn(baseJp: Joinpoint,
  */
 export function getAllReferencesToVariablePassedToFunctions(varDecl: Vardecl): FunctionArgument[] {
     return getAllReferencesToVariablePassedToFunctionsIn(Query.root() as Joinpoint, varDecl);
+}
+
+/**
+ * 
+ */
+export function flattenCalledCode(call: Call): Joinpoint[] {
+    let declsChecked: Set<string> = new Set();
+    let declsToCheck: FunctionJp[] = [call.function];
+
+    let calledCode: Joinpoint[] = [];
+
+    do {
+        let allNewDeclarations: Set<FunctionJp> = new Set();
+
+        for (const decl of declsToCheck) {
+            calledCode = [...calledCode, ...Query.searchFromInclusive(decl, Joinpoint).get()];
+            const nestedCalls: Call[] = Query.searchFrom(decl, Call).get();
+            let foundNewDeclarations: Set<FunctionJp> = new Set(nestedCalls.map(call => call.function).filter(fun => !declsChecked.has(fun.astId)));
+    
+            allNewDeclarations = new Set([...allNewDeclarations, ...foundNewDeclarations]);
+
+            declsChecked.add(decl.astId);
+        }
+
+        declsToCheck = [...allNewDeclarations]
+    } while (declsToCheck.length > 0);
+
+    return calledCode;
+}
+
+/**
+ * 
+ */
+export function getAllCalledFunctions(call: Call): FunctionJp[] {
+    let declsChecked: FunctionJp[] = [];
+    let declsCheckedIds: Set<string> = new Set();
+    let declsToCheck: FunctionJp[] = [call.function];
+
+    do {
+        let allNewDeclarations: Set<FunctionJp> = new Set();
+
+        for (const decl of declsToCheck) {
+            const nestedCalls: Call[] = Query.searchFrom(decl, Call).get();
+            let foundNewDeclarations: Set<FunctionJp> = new Set(nestedCalls.map(call => call.function).filter(fun => !declsCheckedIds.has(fun.astId)));
+    
+            allNewDeclarations = new Set([...allNewDeclarations, ...foundNewDeclarations]);
+
+            declsCheckedIds.add(decl.astId);
+            declsChecked.push(decl);
+        }
+
+        declsToCheck = [...allNewDeclarations]
+    } while (declsToCheck.length > 0);
+
+    return declsChecked;
+
 }
