@@ -1,15 +1,16 @@
 int main() {
-    int a;
-    for (int i = 0; i < 200; i++) {
+    int a = 0;
+    int changed = 1;
+    for (int i = 2; i < 3; i++) {
         int b = a;
         int c = b;
 
-        int d = a;
+        int d = changed;
         int e = d;
 
-        for (int j = 0; j < 30; j++) {
-            b = 1;
-            d++;
+        for (int j = 5; j < 8; j++) {
+            b = 13;
+            changed = 21;
         }
     }
 }
