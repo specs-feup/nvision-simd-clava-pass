@@ -17,6 +17,7 @@
     "test": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit src",
     "test:calls": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/utils/calls.test.ts",
     "test:constprop": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/constprop/constprop.test.ts",
+    "test:search": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/utils/search.test.ts",
     "clear": "rm -rf dist",
     "clearall": "rm -rf dist node_modules package-lock.json",
     "build": "tsc",

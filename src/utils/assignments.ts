@@ -12,7 +12,23 @@ import { getAllReferencesToVariablePassedToFunctionsIn } from "./calls.js";
  * Searches descendants of baseJp, including itself.
  * 
  */
-export function getAllDirectAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl): Op[] {
+export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceIsExclusive: boolean = true): Op[] {
+    return Query.searchFromInclusive(baseJp, Varref, (varref) => {
+        if (varref.vardecl.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+            return true;
+        }
+        return false;
+    }).get().map(getParentOp);
+}
+
+/**
+ * Operations that directly modify the value of variable declared in varDecl. Includes
+ * assignments and unary operations, but not operations involving the derreference
+ * of pointers to the variable.
+ * 
+ * Searches descendants of baseJp, including itself.
+ */
+export function getAllDirectAssignmentsIn(varDecl: Vardecl, baseJp: Joinpoint): Op[] {
     return Query.searchFromInclusive(baseJp, Varref, (varref) => {
         if (varref.vardecl.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
@@ -25,7 +41,7 @@ export function getAllDirectAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl): 
  * Same as getAllDirectAssignmentsIn but uses the root as the base joinpoint
  */
 export function getAllDirectAssignments(varDecl: Vardecl): Op[] {
-    return getAllDirectAssignmentsIn(Query.root() as Joinpoint, varDecl);
+    return getAllDirectAssignmentsIn(varDecl, Query.root() as Joinpoint);
 }
 
 /**
@@ -86,7 +102,7 @@ export function getAllPointersToVarIn(baseJp: Joinpoint, variable: Vardecl): Var
  * those joinpoints returned by this function are not guaranteed be descendants of baseJp,
  * though the call to that function is
  */
-export function getAllIndirectAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl): Op[] {
+export function getAllIndirectAssignmentsIn(varDecl: Vardecl, baseJp: Joinpoint): Op[] {
     const pointersToVar = getAllPointersToVarIn(baseJp, varDecl);
     const assignmentsOfPointers = pointersToVar.flatMap((pointerVariable) => getAllDerefAssignmentsIn(baseJp, pointerVariable));
 
@@ -100,5 +116,5 @@ export function getAllIndirectAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl)
  * Same as getAllIndirectAssignmentIn, but uses the root as the base joinpoint
  */
 export function getAllIndirectAssignments(varDecl: Vardecl): Op[] {
-    return getAllIndirectAssignmentsIn(Query.root() as Joinpoint, varDecl);
+    return getAllIndirectAssignmentsIn(varDecl, Query.root() as Joinpoint);
 }

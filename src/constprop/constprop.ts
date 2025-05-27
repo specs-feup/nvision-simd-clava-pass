@@ -4,8 +4,8 @@ import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import { getAllReferencesTo } from "../utils/varReferences.js"
 import { PositionRelToLoop, getNearestAncestorLoop, getPositionRelativeToOuterLoop } from "../utils/loops.js"
 import { isAddressof } from "../utils/unaryOperations.js";
-import { isConstant, isConstantIn } from "../utils/constants.js";
-import { getAllIndirectAssignments, getAllIndirectAssignmentsIn } from "../utils/assignments.js";
+import { isConstantIn } from "../utils/constants.js";
+import { getAllIndirectAssignmentsIn } from "../utils/assignments.js";
 
 function constructValuesTable(variables: Vardecl[]): Map<Vardecl, Literal | null> {
     const table = new Map<Vardecl, Literal | null>();
@@ -25,17 +25,23 @@ function constructValuesTable(variables: Vardecl[]): Map<Vardecl, Literal | null
 
 function canReplaceReadVarref(varref: Varref, valueInTable: Literal | null, positionInLoop: PositionRelToLoop): boolean {
     if (valueInTable === null) return false;
-    
+
     if (varref.parent instanceof Op && isAddressof(varref.parent)) {
         return false;
     }
 
-    if ((positionInLoop === PositionRelToLoop.CONDITION || positionInLoop === PositionRelToLoop.STEP)) {
-        const ancestorLoop: Loop = getNearestAncestorLoop(varref)!;
-        if (!isConstantIn(ancestorLoop, varref.decl as Vardecl)) return false;
+    if (positionInLoop === PositionRelToLoop.OUTSIDE || positionInLoop === PositionRelToLoop.INITIALIZATION) {
+        return true;
     }
 
-    return true;
+    const ancestorLoop: Loop = getNearestAncestorLoop(varref)!;
+
+    if ((positionInLoop === PositionRelToLoop.CONDITION || positionInLoop === PositionRelToLoop.STEP)) {
+        return isConstantIn(varref.decl as Vardecl, ancestorLoop);
+    } else if (positionInLoop === PositionRelToLoop.BODY) {
+        return true; // TODO
+    }
+    return false;
 }
 
 export function propagateConstants(): void {
@@ -69,11 +75,11 @@ export function propagateConstants(): void {
 
                 if (varref.use === "read") {
                     const parent = varref.parent;
-                    if (varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of" && varref.parent.parent instanceof Call && getAllIndirectAssignmentsIn(varref.parent.parent, variable).length !== 0) {
+                    if (varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of" && varref.parent.parent instanceof Call && getAllIndirectAssignmentsIn(variable, varref.parent.parent).length !== 0) {
                         values.set(variable, null);
                         continue;
                     }
-                    
+
                     if (!canReplaceReadVarref(varref, currentVariableValue, relativeLoopPos)) {
                         continue;
                     }
