@@ -44,11 +44,14 @@ function canReplaceReadVarref(varref: Varref, valueInTable: Literal | null, posi
     return false;
 }
 
-export function propagateConstants(): void {
-    let changes: number = 0;
+export function propagateConstants(): number {
+    let iterationChanges: number = 0;
+    let totalChanges: number = 0;
     let cycle: number = 0;
+
     do {
-        changes = 0;
+        totalChanges += iterationChanges;
+        iterationChanges = 0;
 
         const variables: Vardecl[] = Query.search(Vardecl, vardecl => !vardecl.isGlobal || isConstant(vardecl)).get();
         const values: Map<Vardecl, Literal | null> = constructValuesTable(variables);
@@ -86,7 +89,7 @@ export function propagateConstants(): void {
                     }
 
                     varref.replaceWith((currentVariableValue as Literal).copy());
-                    changes++;
+                    iterationChanges++;
                 } else if (varref.use === "readwrite") {
                     values.set(variable, null);
                 } else {
@@ -96,6 +99,7 @@ export function propagateConstants(): void {
         }
 
         cycle++;
-    } while (changes > 0 && cycle < 100)
+    } while (iterationChanges > 0 && cycle < 100);
 
+    return totalChanges;
 }
