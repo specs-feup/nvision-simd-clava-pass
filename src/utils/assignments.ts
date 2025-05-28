@@ -15,7 +15,7 @@ import { getFromAfter } from "./search.js";
  */
 export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceInclusive: boolean = false): Op[] {
     return getFromAfter(baseJp, Varref, referenceJp, (varref) => {
-        if (varref.vardecl.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+        if (varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;
@@ -31,7 +31,7 @@ export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoi
  */
 export function getAllDirectAssignmentsIn(varDecl: Vardecl, baseJp: Joinpoint): Op[] {
     return Query.searchFromInclusive(baseJp, Varref, (varref) => {
-        if (varref.vardecl.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+        if (varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;

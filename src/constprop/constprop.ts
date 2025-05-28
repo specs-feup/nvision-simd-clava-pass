@@ -1,10 +1,10 @@
 import { BinaryOp, Call, Joinpoint, Literal, Loop, Op, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import { isDeclaredWithLiteral } from "../utils/declarations.js"
-import { getAllReferencesTo } from "../utils/varReferences.js"
+import { getAllReferencesTo, isVarrefOf } from "../utils/varReferences.js"
 import { PositionRelToLoop, getNearestAncestorLoop, getPositionRelativeToOuterLoop } from "../utils/loops.js"
 import { isAddressof } from "../utils/unaryOperations.js";
-import { isConstantIn, isConstantInAfter } from "../utils/constants.js";
+import { isConstant, isConstantIn, isConstantInAfter } from "../utils/constants.js";
 import { getAllIndirectAssignmentsIn } from "../utils/assignments.js";
 
 function constructValuesTable(variables: Vardecl[]): Map<Vardecl, Literal | null> {
@@ -49,7 +49,8 @@ export function propagateConstants(): void {
     let cycle: number = 0;
     do {
         changes = 0;
-        const variables: Vardecl[] = Query.search(Vardecl).get();
+
+        const variables: Vardecl[] = Query.search(Vardecl, vardecl => !vardecl.isGlobal || isConstant(vardecl)).get();
         const values: Map<Vardecl, Literal | null> = constructValuesTable(variables);
 
         for (const variable of variables) {
