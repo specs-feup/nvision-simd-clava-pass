@@ -9,8 +9,7 @@ int main() {
         int e = d;
 
         for (int j = 5; j < 8; j++) {
-            b = 13;
-            changed = 21;
+            changed = 13;
         }
     }
 }

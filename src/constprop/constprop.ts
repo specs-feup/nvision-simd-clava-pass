@@ -4,7 +4,7 @@ import { isDeclaredWithLiteral } from "../utils/declarations.js"
 import { getAllReferencesTo } from "../utils/varReferences.js"
 import { PositionRelToLoop, getNearestAncestorLoop, getPositionRelativeToOuterLoop } from "../utils/loops.js"
 import { isAddressof } from "../utils/unaryOperations.js";
-import { isConstantIn } from "../utils/constants.js";
+import { isConstantIn, isConstantInAfter } from "../utils/constants.js";
 import { getAllIndirectAssignmentsIn } from "../utils/assignments.js";
 
 function constructValuesTable(variables: Vardecl[]): Map<Vardecl, Literal | null> {
@@ -39,7 +39,7 @@ function canReplaceReadVarref(varref: Varref, valueInTable: Literal | null, posi
     if ((positionInLoop === PositionRelToLoop.CONDITION || positionInLoop === PositionRelToLoop.STEP)) {
         return isConstantIn(varref.decl as Vardecl, ancestorLoop);
     } else if (positionInLoop === PositionRelToLoop.BODY) {
-        return true; // TODO
+        return isConstantInAfter(varref.decl as Vardecl, ancestorLoop, varref);
     }
     return false;
 }

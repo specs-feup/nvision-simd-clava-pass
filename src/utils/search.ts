@@ -32,7 +32,7 @@ export function getFromAfter<T extends typeof Joinpoint>(
     const referenceIndex: number = jpsInsideBaseJp.findIndex((jp) => jp.equals(referenceJp)) + (referenceInclusive ? 0 : 1);
 
     if (referenceIndex === -1) {
-        throw new Error(`searchFromInclusiveAfter: referenceJp:\n${referenceJp.code}'\n\nis not a child of (or the very same) baseJp:\n${baseJp.code}\n`);
+        throw new Error(`getFromAfter: referenceJp:\n${referenceJp.code}'\n\nis not a child of (or the very same) baseJp:\n${baseJp.code}\n`);
     }
 
     const topLevelJps: InstanceType<T>[] = Query.searchFromInclusive(baseJp, type, filter).get()

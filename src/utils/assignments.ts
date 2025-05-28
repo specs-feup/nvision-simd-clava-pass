@@ -2,7 +2,8 @@ import { BinaryOp, Joinpoint, Op, UnaryOp, Vardecl, Varref } from "@specs-feup/c
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import { getParentOp } from "./operations.js";
 import { isAddressofToVar } from "./unaryOperations.js";
-import { getAllReferencesToVariablePassedToFunctionsIn } from "./calls.js";
+import { getAllReferencesToVariablePassedToFunctionsIn, getAllReferencesToVariablePassedToFunctionsInAfter } from "./calls.js";
+import { getFromAfter } from "./search.js";
 
 /**
  * Operations that directly modify the value of variable declared in varDecl. Includes
@@ -12,13 +13,13 @@ import { getAllReferencesToVariablePassedToFunctionsIn } from "./calls.js";
  * Searches descendants of baseJp, including itself.
  * 
  */
-export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceIsExclusive: boolean = true): Op[] {
-    return Query.searchFromInclusive(baseJp, Varref, (varref) => {
+export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceInclusive: boolean = false): Op[] {
+    return getFromAfter(baseJp, Varref, referenceJp, (varref) => {
         if (varref.vardecl.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;
-    }).get().map(getParentOp);
+    }, referenceInclusive, true).map(getParentOp);
 }
 
 /**
@@ -44,6 +45,14 @@ export function getAllDirectAssignments(varDecl: Vardecl): Op[] {
     return getAllDirectAssignmentsIn(varDecl, Query.root() as Joinpoint);
 }
 
+export function getAllDerefAssignmentsInAfter(baseJp: Joinpoint, varDecl: Vardecl, referenceJp: Joinpoint, referenceInclusive: boolean = false): Op[] {
+    return getFromAfter(baseJp, UnaryOp, referenceJp, unaryOp => {
+        return unaryOp.kind === "deref" &&
+            (unaryOp.use === "write" || unaryOp.use === "readwrite") &&
+            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.equals(varDecl);
+    }, referenceInclusive, true);
+}
+
 /**
  * Operations that dereference the variable declared in varDecl and change its underlying value.
  * 
@@ -51,9 +60,9 @@ export function getAllDirectAssignments(varDecl: Vardecl): Op[] {
  */
 export function getAllDerefAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl): Op[] {
     return Query.searchFromInclusive(baseJp, UnaryOp, unaryOp => {
-        return unaryOp.kind === "deref" && 
-        (unaryOp.use === "write" || unaryOp.use === "readwrite") && 
-        unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.equals(varDecl);
+        return unaryOp.kind === "deref" &&
+            (unaryOp.use === "write" || unaryOp.use === "readwrite") &&
+            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.equals(varDecl);
     }).get();
 }
 
@@ -84,6 +93,20 @@ export function getAllPointersToVarIn(baseJp: Joinpoint, variable: Vardecl): Var
     }
 
     return pointersToVar;
+}
+
+/**
+ * WARNING: this function shares all limitations of getAllIndirectAssignmentsIn. Read its documentation to know the limitations
+ * @param referenceInclusive DEFAULT false. Whether referenceJp should be included in the search
+ */
+export function getAllIndirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceInclusive: boolean = false): Op[] {
+    const pointersToVar = getAllPointersToVarIn(baseJp, varDecl);
+    const assignmentsOfPointers = pointersToVar.flatMap((pointerVariable) => getAllDerefAssignmentsInAfter(baseJp, pointerVariable, referenceJp, referenceInclusive));
+
+    const functionParametersThatArePointersToVar = getAllReferencesToVariablePassedToFunctionsInAfter(baseJp, varDecl, referenceJp, referenceInclusive).map(functionArgument => functionArgument.argumentDecl);
+    const assignmentsOfParams = functionParametersThatArePointersToVar.flatMap(getAllDerefAssignments)
+
+    return [...assignmentsOfPointers, ...assignmentsOfParams];
 }
 
 /**
