@@ -5,7 +5,7 @@ import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignm
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
 import { isVarrefOf } from "./utils/varReferences.js";
-import { unaryOp } from "specs-feup/clava/api/ClavaJoinPoints.js"
+import "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 
 
 const packingFactorAcceptedArrayTypes = new Map([
@@ -123,14 +123,16 @@ function loopIsSuitable(loop: Loop, packingFactor: number): boolean {
 }
 
 function applyTransformation(suitableForLoop: Loop): void {
-    const accumVarref: Varref = Query.searchFrom(suitableForLoop).search(Body).search(BinaryOp, { kind: "assign" }).search(Varref, { use: "write" }).getFirst()!;
+    const accumVarref: Varref = Query.searchFrom(suitableForLoop, Body).search(BinaryOp, { kind: "assign" }).search(Varref, { use: "write" }).getFirst()!;
     const arrayAccesses: ArrayAccess[] = Query.searchFrom(accumVarref.parent, ArrayAccess).get();
 
     if (arrayAccesses.length !== 1 && arrayAccesses.length !== 2) throw new Error("Unsupported number of array accesses");
 
     const arrayA: Varref = arrayAccesses[0].arrayVar as Varref;
     const arrayB: Varref = (arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]).arrayVar as Varref;
-    const endValue = suitableForLoop.endValue;
+    const substituteFunction: FunctionJp = Query.search(FunctionJp, {name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b_alt`}).getFirst()!;
+    const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA.copy() as Varref, arrayB.copy() as Varref, ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref), ClavaJoinPoints.exprLiteral(suitableForLoop.endValue));
+    suitableForLoop.replaceWith(callToSubFunction);
 }
 
 Query.search(Loop).search(Body).search(BinaryOp, binOp => binOp.isAssignment).get().map(SimplifyAssignment);
