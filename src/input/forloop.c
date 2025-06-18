@@ -82,8 +82,8 @@ int main(void) {
     result = result + vector[i] * vector[i];
   }
 
-  nvision_matrix_col_8b((int32_t *)matrix_col, (int32_t *)vector, &result,
-                        len / 8);
+  nvision_matrix_col_8b(matrix_col, vector, &result,
+                        len);
 
   // problem
   for (size_t i = 0; i < len; i++) {
