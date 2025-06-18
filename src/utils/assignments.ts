@@ -31,7 +31,7 @@ export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoi
  */
 export function getAllDirectAssignmentsIn(varDecl: Vardecl, baseJp: Joinpoint): Op[] {
     return Query.searchFromInclusive(baseJp, Varref, (varref) => {
-        if (varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+        if (!varref.isFunctionCall && varref.vardecl !== undefined && varref.vardecl !== null && varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;

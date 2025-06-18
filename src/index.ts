@@ -1,11 +1,13 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Type, BuiltinType, TypedefType, Expression, Decl, Varref, BinaryOp, UnaryOp, Joinpoint, IntLiteral, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
 import { isVarrefOf } from "./utils/varReferences.js";
+import "@specs-feup/clava/api/clava/code/StatementDecomposer.js";
 import "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
+import StatementDecomposer from "@specs-feup/clava/api/clava/code/StatementDecomposer.js";
 
 
 const packingFactorAcceptedArrayTypes = new Map([
@@ -122,7 +124,7 @@ function loopIsSuitable(loop: Loop, packingFactor: number): boolean {
     return true;
 }
 
-function applyTransformation(suitableForLoop: Loop): void {
+function applyTransformation(suitableForLoop: Loop, packingFactor: number): void {
     const accumVarref: Varref = Query.searchFrom(suitableForLoop, Body).search(BinaryOp, { kind: "assign" }).search(Varref, { use: "write" }).getFirst()!;
     const arrayAccesses: ArrayAccess[] = Query.searchFrom(accumVarref.parent, ArrayAccess).get();
 
@@ -130,13 +132,19 @@ function applyTransformation(suitableForLoop: Loop): void {
 
     const arrayA: Varref = arrayAccesses[0].arrayVar as Varref;
     const arrayB: Varref = (arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]).arrayVar as Varref;
-    const substituteFunction: FunctionJp = Query.search(FunctionJp, {name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b_alt`}).getFirst()!;
+    const substituteFunction: FunctionJp = Query.search(FunctionJp, {name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b`}).getFirst()!;
     const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA.copy() as Varref, arrayB.copy() as Varref, ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref), ClavaJoinPoints.exprLiteral(suitableForLoop.endValue));
     suitableForLoop.replaceWith(callToSubFunction);
 }
 
+const stmtDecomp: StatementDecomposer = new StatementDecomposer();
 Query.search(Loop).search(Body).search(BinaryOp, binOp => binOp.isAssignment).get().map(SimplifyAssignment);
 propagateAndFoldConstants();
+
+for (const stmt of Query.search(Loop).search(Body).search(Statement).get()) {
+    stmtDecomp.decomposeAndReplace(stmt);
+}
+
 /*
     I am first considering the case where the original value is an int8_t, since
     nvision's instructions use 32 bit packed values, the packing factor is 4x!
@@ -146,9 +154,7 @@ const packingFactor = 4;
 const forLoops = Query.search(Loop, (loop: Loop) => loopIsSuitable(loop, packingFactor)).get();
 
 for (const suitableLoop of forLoops) {
-    applyTransformation(suitableLoop);
+    applyTransformation(suitableLoop, 4);
 }
 
 console.log("Found " + forLoops.length + " forloops.")
-
-// TODO: for (const loop of forLoops) applyTransformation(loop, 4);
