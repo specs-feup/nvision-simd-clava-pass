@@ -1,13 +1,11 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
 import { isVarrefOf } from "./utils/varReferences.js";
-import "@specs-feup/clava/api/clava/code/StatementDecomposer.js";
 import "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
-import StatementDecomposer from "@specs-feup/clava/api/clava/code/StatementDecomposer.js";
 
 
 const packingFactorAcceptedArrayTypes = new Map([
@@ -132,18 +130,13 @@ function applyTransformation(suitableForLoop: Loop, packingFactor: number): void
 
     const arrayA: Varref = arrayAccesses[0].arrayVar as Varref;
     const arrayB: Varref = (arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]).arrayVar as Varref;
-    const substituteFunction: FunctionJp = Query.search(FunctionJp, {name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b`}).getFirst()!;
+    const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b` }).getFirst()!;
     const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA.copy() as Varref, arrayB.copy() as Varref, ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref), ClavaJoinPoints.exprLiteral(suitableForLoop.endValue));
     suitableForLoop.replaceWith(callToSubFunction);
 }
 
-const stmtDecomp: StatementDecomposer = new StatementDecomposer();
 Query.search(Loop).search(Body).search(BinaryOp, binOp => binOp.isAssignment).get().map(SimplifyAssignment);
 propagateAndFoldConstants();
-
-for (const stmt of Query.search(Loop).search(Body).search(Statement).get()) {
-    stmtDecomp.decomposeAndReplace(stmt);
-}
 
 /*
     I am first considering the case where the original value is an int8_t, since
