@@ -19,6 +19,8 @@
     "test:constprop": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/constprop/constprop.test.ts",
     "test:search": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/utils/search.test.ts",
     "test:propandfold": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/constprop/propandfold.test.ts",
+    "test:forloop": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/pass.test.ts",
+    "test:cfg": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/cfg/search.test.ts",
     "clear": "rm -rf dist",
     "clearall": "rm -rf dist node_modules package-lock.json",
     "build": "tsc",
@@ -33,6 +35,9 @@
   "dependencies": {
     "@specs-feup/clava": "3.0.17",
     "@specs-feup/clava-code-transforms": "^1.0.0",
+    "@specs-feup/flow": "^1.0.3",
+    "@specs-feup/clava-flow": "^1.0.1",
+    "@specs-feup/clava-visualization": "1.0.5",
     "typescript": "^5.8.2"
   },
   "devDependencies": {

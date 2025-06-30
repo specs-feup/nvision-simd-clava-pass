@@ -26,16 +26,18 @@ export function getNearestAncestorLoop(jp: Joinpoint): Loop | undefined {
 /**
  * Checks if the given Joinpoint is inside a Loop. If so, it specifies
  * where. Otherwise, returns PoPositionRelToLoop.OUTSIDE
+ * 
+ * ForEach loops are unsupported and will throw an error
  */
 export function getPositionRelativeToOuterLoop(jp: Joinpoint): PositionRelToLoop {
     const ancestorLoop: Loop | undefined = getNearestAncestorLoop(jp);
 
     if (ancestorLoop === undefined) return PositionRelToLoop.OUTSIDE;
 
-    if (ancestorLoop.kind ===  "foreach") throw new Error("getPositionRelativeToALoop: Foreach loops are unsupported");
+    if (ancestorLoop.kind === "foreach") throw new Error("getPositionRelativeToALoop: Foreach loops are unsupported");
 
     const body: Scope = ancestorLoop.body;
-    
+
     if (Query.searchFromInclusive(body, Joinpoint, { astId: jp.astId }).get().length === 1) return PositionRelToLoop.BODY;
 
     const cond: Statement | null | undefined = ancestorLoop.cond;

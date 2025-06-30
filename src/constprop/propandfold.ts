@@ -17,7 +17,9 @@ export function propagateAndFoldConstants(): number {
     do {
         totalChanges += iterationChanges;
         iterationChanges = 0;
+
         const constantFolder = new ConstantFolderAll(true);
+
         iterationChanges += propagateConstants();
         iterationChanges += constantFolder.doPass();
 

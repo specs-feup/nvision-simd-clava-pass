@@ -50,7 +50,8 @@ void nvision_matrix_col_8b(int8_t *A, int8_t *B, int32_t *accum,
   int32_t *B_cast = (int32_t *)B;
 
   for (int i = 0; i < mac_len; i++) {
-    mac_sim_8b(A_cast[i*2], B_cast[i*2], A_cast[i*2 + 1], B_cast[i*2 + 1]);
+    mac_sim_8b(A_cast[i * 2], B_cast[i * 2], A_cast[i * 2 + 1],
+               B_cast[i * 2 + 1]);
   }
 
   *accum += clear_read_sim();
