@@ -65,6 +65,18 @@ describe("expressions test case", () => {
         const found = expectExists(findInCfg(cfg, pre_inc));
         expect(found.jp?.equals(pre_inc)).toBe(true);
     });
+
+    test("finds functions", () => {
+        const mainFunc = getFirstAndExpectExists(FunctionJp, { name: "main" });
+
+        const foundMain = expectExists(findInCfg(cfg, mainFunc));
+        expect(foundMain.jp?.equals(mainFunc)).toBe(true);
+
+        const fooFunc = getFirstAndExpectExists(FunctionJp, { name: "foo" });
+
+        const foundFoo = expectExists(findInCfg(cfg, fooFunc));
+        expect(foundFoo.jp?.equals(fooFunc)).toBe(true);
+    });
 });
 
 describe("nesting test case", () => {
