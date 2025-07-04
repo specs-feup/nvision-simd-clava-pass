@@ -1,10 +1,12 @@
+import { FunctionJp, If, Joinpoint, Loop, Param, Scope } from "@specs-feup/clava/api/Joinpoints.js";
+import Query from "@specs-feup/lara/api/weaver/Query.js";
+
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import ClavaNode from "@specs-feup/clava-flow/ClavaNode";
-import { Expression, FunctionJp, If, Joinpoint, Loop, Param, Scope, Varref } from "@specs-feup/clava/api/Joinpoints.js";
-import Query from "@specs-feup/lara/api/weaver/Query.js";
 import FunctionNode from "@specs-feup/flow/flow/FunctionNode";
 import ScopeNode from "@specs-feup/clava-flow/cfg/node/ScopeNode";
 import ConditionNode from "@specs-feup/clava-flow/cfg/node/condition/ConditionNode";
+
 import { getPositionRelativeToOuterLoop, PositionRelToLoop } from "../utils/loops.js";
 import { isInIfCondition } from "../utils/ifs.js";
 
@@ -64,13 +66,4 @@ export function findInCfg(cfg: ClavaFlowGraph.Class, jp: Joinpoint): ClavaNode.C
     }
 
     return undefined;
-}
-
-
-export function getLastAssignments(cfg: ClavaFlowGraph.Class, varref: Varref): Expression[] {
-    const currentCfgNode: ClavaNode.Class | undefined = findInCfg(cfg, varref);
-    if (currentCfgNode === undefined) throw new Error(`Tried to find ${varref.code} of line ${varref.line} in cfg but was unable to`);
-
-    // TODO
-    return [];
 }
