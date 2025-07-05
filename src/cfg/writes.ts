@@ -14,10 +14,9 @@ import { getIncomingClavaNodes } from "./clavaNode.js";
 import { findInCfg } from "./search.js";
 
 
-function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, checkedNodes: Set<ClavaNode.Class>): Expression[] {
-    if (checkedNodes.has(currentNode)) return [];
-    checkedNodes.add(currentNode);
-
+function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, checkedNodes: ClavaNode.Class[]): Expression[] {
+    if (checkedNodes.filter(node => node.id === currentNode.id).length > 0) return [];
+    checkedNodes.push(currentNode);
 
     if (currentNode.is(VariableDeclarationNode)) {
         const currVardecl: Vardecl = currentNode.as(VariableDeclarationNode).jp;
@@ -27,8 +26,9 @@ function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, che
     }
 
     let searchStartNode: Joinpoint | undefined;
-
-    if (currentNode.is(ReturnNode) || currentNode.is(ExpressionNode)) {
+    
+    //it may be a variable declaration node but not of variable being searched
+    if (currentNode.is(ReturnNode) || currentNode.is(ExpressionNode) || currentNode.is(VariableDeclarationNode)) { 
         searchStartNode = currentNode.jp;
     }
     else if (currentNode.is(ConditionNode) && !currentNode.is(ForEachNode)) {
@@ -71,5 +71,5 @@ export function getLastWrites(cfg: ClavaFlowGraph.Class, varref: Varref): Expres
         throw new Error(`Cannot get assignments of variable «${varref.name}» from line ${varref.line} because it does not have a Vardecl (is it a function call?)`);
 
 
-    return getLastWritesHelper(varref.vardecl, initialCfgNode, new Set());
+    return getLastWritesHelper(varref.vardecl, initialCfgNode, []);
 }
