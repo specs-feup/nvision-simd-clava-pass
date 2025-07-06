@@ -1,5 +1,5 @@
 import { registerSourceCodeOnce, getFirstAndExpectExists, expectExists } from "../utils/jestHelpers.js";
-import { Vardecl, BinaryOp, Joinpoint, UnaryOp, Program, Loop, FunctionJp, Scope, Param, Varref, Expression, IntLiteral } from "@specs-feup/clava/api/Joinpoints.js";
+import { Vardecl, BinaryOp, Joinpoint, UnaryOp, Program, Loop, Varref, Expression, IntLiteral } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 
 import fs from "node:fs";
@@ -15,6 +15,8 @@ const simpleLinearCode = fs.readFileSync("./src/input/cfg/writes/simple_linear.c
 const ifBranchCode = fs.readFileSync("./src/input/cfg/writes/if_branch.c", "utf-8");
 const loopCode = fs.readFileSync("./src/input/cfg/writes/loop.c", "utf-8");
 const nestingCode = fs.readFileSync("./src/input/cfg/writes/nesting.c", "utf-8");
+const writeInDeclarationCode = fs.readFileSync("./src/input/cfg/writes/write_in_declaration.c", "utf-8");
+const writeInCallCode = fs.readFileSync("./src/input/cfg/writes/write_in_call.c", "utf-8");
 
 describe("base case test", () => {
     let cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
@@ -27,13 +29,22 @@ describe("base case test", () => {
         console.log((Query.root() as Joinpoint).code);
     });
 
-    test("finds a literal in from the declaration", () => {
+    test("finds a literal in the declaration of the variable", () => {
         const aVarref: Varref = getFirstAndExpectExists(Varref, { "name": "a" });
         const declarationLiteral: IntLiteral = expectExists(Query.search(Vardecl, { name: "a" }).search(IntLiteral).getFirst());
 
         const lastWrites: Expression[] = getLastWrites(cfg, aVarref);
         expect(lastWrites).toHaveLength(1);
         expect(lastWrites[0].equals(declarationLiteral)).toBe(true);
+    });
+
+    test("finds a binary operation in an assignment of the variable", () => {
+        const bVarref: Varref = expectExists(Query.search(BinaryOp, { kind: "sub" }).search(Varref, { "name": "b" }).getFirst());
+        const assignedBinOp: BinaryOp = expectExists(Query.search(BinaryOp, { kind: "assign" }).search(BinaryOp, { kind: "add" }).getFirst());
+
+        const lastWrites: Expression[] = getLastWrites(cfg, bVarref);
+        expect(lastWrites).toHaveLength(1);
+        expect(lastWrites[0].equals(assignedBinOp)).toBe(true);
     });
 });
 
@@ -193,5 +204,46 @@ describe("nesting test case", () => {
             (lastWrites[0].equals(bPostDec) && lastWrites[1].equals(bLoopInitLiteral))
         ).toBe(true);
     });
+});
 
+describe("write in declaration test", () => {
+    let cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
+
+    beforeAll(() => {
+        registerSourceCodeOnce(writeInDeclarationCode);
+        cfg = Graph.create()
+            .apply(new ClavaCfgGenerator(Query.root() as Program));
+
+        console.log((Query.root() as Joinpoint).code);
+    });
+
+    test("finds a write in the declaration of other variables", () => {
+        const aVarref: Varref = expectExists(Query.search(BinaryOp, { kind: "add" }).search(Varref, { name: "a" }).getFirst());
+        const aPostInc: UnaryOp = getFirstAndExpectExists(UnaryOp, { kind: "post_inc" });
+
+        const lastWrites: Expression[] = getLastWrites(cfg, aVarref);
+        expect(lastWrites).toHaveLength(1);
+        expect(lastWrites[0].equals(aPostInc)).toBe(true);
+    });
+});
+
+describe("write in call test", () => {
+    let cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
+
+    beforeAll(() => {
+        registerSourceCodeOnce(writeInCallCode);
+        cfg = Graph.create()
+            .apply(new ClavaCfgGenerator(Query.root() as Program));
+
+        console.log((Query.root() as Joinpoint).code);
+    });
+
+    test("finds a write in the calling of functions", () => {
+        const aVarref: Varref = expectExists(Query.search(BinaryOp, { kind: "add" }).search(Varref, { name: "a" }).getFirst());
+        const aPreInc: UnaryOp = getFirstAndExpectExists(UnaryOp, { kind: "pre_inc" });
+
+        const lastWrites: Expression[] = getLastWrites(cfg, aVarref);
+        expect(lastWrites).toHaveLength(1);
+        expect(lastWrites[0].equals(aPreInc)).toBe(true);
+    });
 });
