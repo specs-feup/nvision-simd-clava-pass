@@ -1,5 +1,5 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
@@ -14,6 +14,8 @@ import { getAncestorStmt } from "./utils/statements.js";
 import VariableDeclarationNode from "@specs-feup/clava-flow/cfg/node/VariableDeclarationNode";
 import { getByAstId } from "./cfg/search.js";
 import VisualizationTool from "@specs-feup/clava-visualization/api/VisualizationTool.js"
+import { tryAs } from "./utils/conversion.js";
+import { valueIs } from "./cfg/valueIs.js";
 
 const packingFactorAcceptedArrayTypes = new Map([
     [2, ["__int16_t", "__uint16_t", "int16_t", "uint16_t"]],
@@ -25,17 +27,17 @@ function altersControlFlow(stmt: Statement) {
 }
 
 /**
- * Checks if the loop's step value can be parsed as an Int
+ * Checks if the loop's step value is an integer
  */
 function hasKnownIntStepValue(loop: Loop): boolean {
-    return loop.stepValue !== null && loop.stepValue !== undefined && !Number.isNaN(parseInt(loop.stepValue));
+    return loop.stepValue !== null && loop.stepValue !== undefined && Number.isSafeInteger(parseFloat(loop.stepValue));
 }
 
 /**
  * Checks if the loop's end value can be parsed as an Int
  */
 function hasKnownEndValue(loop: Loop): boolean {
-    return loop.endValue !== null && loop.endValue !== undefined && !Number.isNaN(parseInt(loop.endValue));
+    return loop.endValue !== null && loop.endValue !== undefined && Number.isSafeInteger(parseFloat(loop.endValue));
 }
 
 function hasConstantPredictableStep(loop: Loop): boolean {
@@ -43,9 +45,8 @@ function hasConstantPredictableStep(loop: Loop): boolean {
 
     if (!hasKnownIntStepValue(loop)) return false;
 
-    const loopControlVarDecl: Vardecl = Query.searchFrom(loop, Varref, { name: loop.controlVar }).getFirst()!.vardecl!;
-
-    return isConstantIn(loopControlVarDecl, loop.body);
+    if (loop.controlVarref === undefined || loop.controlVarref.vardecl === undefined) return false;
+    return isConstantIn(loop.controlVarref.vardecl, loop.body);
 }
 
 function endValueIsConstant(loop: Loop): boolean {
@@ -53,11 +54,9 @@ function endValueIsConstant(loop: Loop): boolean {
 
     if (endValue === undefined || endValue === null) return true;
 
-    let endValueIsLiteral: boolean = !Number.isNaN(parseInt(endValue));
+    let endValueIsLiteral: boolean = Number.isSafeInteger(parseFloat(endValue));
 
-    if (endValueIsLiteral) return true;
-
-    return false;
+    return endValueIsLiteral;
 }
 
 function hasRegularControlFlow(loop: Loop): boolean {
@@ -76,9 +75,52 @@ function isInsideMultiplication(jp: Joinpoint): boolean {
     return false;
 }
 
-function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+function isValidArrayAccess(jp: Joinpoint, loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+    const arrayAccessValue: ArrayAccess | undefined = valueIs(jp, ArrayAccess, cfg);
+    if (arrayAccessValue === undefined) return false;
+    if (!packingFactorAcceptedArrayTypes.get(packingFactor)?.includes(arrayAccessValue.type.desugar.code)) return false;
 
-    if (!(packingFactorAcceptedArrayTypes.has(packingFactor))) {
+    if (loop.controlVarref?.vardecl === undefined) return false;
+    const controlVardecl: Vardecl = loop.controlVarref.vardecl;
+
+    if (Query.searchFrom(arrayAccessValue, Varref, varref => isVarrefOf(varref, controlVardecl) && !isInsideMultiplication(varref)).get().length === 0) return false;
+
+    return true;
+}
+
+function isValidVectorMultiplication(jp: Joinpoint, loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+    const multiplicationValue: BinaryOp | undefined = valueIs(jp, BinaryOp, cfg);
+    if (multiplicationValue === undefined || multiplicationValue.kind !== "mul") return false;
+
+    return (isValidArrayAccess(multiplicationValue.left, loop, packingFactor, cfg) && isValidArrayAccess(multiplicationValue.right, loop, packingFactor, cfg));
+}
+
+function isValidAccumulatorIncrease(jp: Joinpoint, accumVarref: Varref, loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+    const increaseValue: BinaryOp | undefined = valueIs(jp, BinaryOp, cfg);
+
+    if (increaseValue === undefined || increaseValue.kind !== "add") return false;
+
+    if (
+        isVarrefOf(increaseValue.left, accumVarref.vardecl) && isValidVectorMultiplication(increaseValue.right, loop, packingFactor, cfg)
+        ||
+        isVarrefOf(increaseValue.right, accumVarref.vardecl) && isValidVectorMultiplication(increaseValue.left, loop, packingFactor, cfg)
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function isValidAccumulatorAssignment(jp: Joinpoint, accumVarref: Varref, loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+    if (!(jp instanceof BinaryOp)) return false;
+    const accumAssignment: BinaryOp = jp as BinaryOp;
+    if (accumAssignment.kind !== "assign" || !jp.left.equals(accumVarref)) return false;
+
+    return isValidAccumulatorIncrease(accumAssignment.right, accumVarref, loop, packingFactor, cfg);
+}
+
+function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+    if (!packingFactorAcceptedArrayTypes.has(packingFactor)) {
         throw new Error(`Tried to use unsupported packingFactor: ${packingFactor}`);
     }
 
@@ -100,45 +142,17 @@ function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.C
         return false;
     }
 
-
     const accumVarref: Varref = externalVariableModifications[0];
 
-    // for now, the accumulation should be of the type accum = accum + A[...] * B[...]
-    if (!(accumVarref.parent instanceof BinaryOp)) return false;
-    const accumAssignment: BinaryOp = accumVarref.parent as BinaryOp;
-    if (accumAssignment.kind !== "assign" || !accumAssignment.left.equals(accumVarref)) return false;
-
-    if (!(accumAssignment.right instanceof BinaryOp)) return false;
-    const assignmentRightJp: BinaryOp = accumAssignment.right as BinaryOp;
-    if (assignmentRightJp.kind !== "add" || !isVarrefOf(assignmentRightJp.left, accumVarref.vardecl) || !(assignmentRightJp.right instanceof BinaryOp))
-        return false;
-
-    const multiplicationOfArrayAccesses: BinaryOp = assignmentRightJp.right;
-    if (multiplicationOfArrayAccesses.kind !== "mul" || !(multiplicationOfArrayAccesses.left instanceof ArrayAccess) || !(multiplicationOfArrayAccesses.right instanceof ArrayAccess))
-        return false;
-
-    if (!packingFactorAcceptedArrayTypes.get(packingFactor)?.includes(multiplicationOfArrayAccesses.left.type.desugar.code)) return false;
-    if (!packingFactorAcceptedArrayTypes.get(packingFactor)?.includes(multiplicationOfArrayAccesses.right.type.desugar.code)) return false;
-
-    const controlVal: Vardecl = loop.controlVarref.vardecl!;
-
-    if (Query.searchFrom(multiplicationOfArrayAccesses.left, Varref, varref => isVarrefOf(varref, controlVal) && !isInsideMultiplication(varref)).get().length === 0) return false;
-    if (Query.searchFrom(multiplicationOfArrayAccesses.right, Varref, varref => isVarrefOf(varref, controlVal) && !isInsideMultiplication(varref)).get().length === 0) return false;
-
-    const stmt: Statement = getAncestorStmt(accumVarref);
-    const stmtAstStmtNode = getByAstId(cfg, stmt.getChild(0)!.astId);
-    if (stmtAstStmtNode !== undefined) {
-        console.log(`Yay ${stmtAstStmtNode.jp.code}`);
-    }    
-
-    return true;
+    // the accumulation should be equivalent to accum += A[...] * B[...]
+    return isValidAccumulatorAssignment(accumVarref.parent, accumVarref, loop, packingFactor, cfg);
 }
 
 function applyTransformation(suitableForLoop: Loop, packingFactor: number): void {
     const accumVarref: Varref = Query.searchFrom(suitableForLoop, Body).search(BinaryOp, { kind: "assign" }).search(Varref, { use: "write" }).getFirst()!;
-    const arrayAccesses: ArrayAccess[] = Query.searchFrom(accumVarref.parent, ArrayAccess).get();
+    const arrayAccesses: ArrayAccess[] = Query.searchFrom(suitableForLoop, ArrayAccess).get();
 
-    if (arrayAccesses.length !== 1 && arrayAccesses.length !== 2) throw new Error("Unsupported number of array accesses");
+    if (arrayAccesses.length !== 1 && arrayAccesses.length !== 2) throw new Error(`Unsupported number of array accesses: «${arrayAccesses.length}», loop code = ${suitableForLoop.code}`);
 
     const arrayA: Varref = arrayAccesses[0].arrayVar as Varref;
     const arrayB: Varref = (arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]).arrayVar as Varref;
@@ -156,7 +170,6 @@ export async function applyPass(): Promise<void> {
 
     const formatter = new ClavaFlowDotFormatter();
     cfg.toFile(formatter, "dist/graph.dot");
-
 
     /*
         I am first considering the case where the original value is an int8_t, since

@@ -67,14 +67,42 @@ void test(void) {
   int8_t vector[8] = {10, 4, 8, 2, 6, 12, 3, 7};
   int8_t matrix_col[8] = {10, 4, 8, 2, 6, 12, 5, 1};
 
-  // ok
+  // result += vector * vector
   for (size_t i = 0; i < len; i++) {
     result += vector[i] * matrix_col[i];
   }
 
-  // ok
+  // result = result + vector * vector
   for (size_t i = 0; i < len; i++) {
     result = result + vector[i] * vector[i];
+  }
+
+  // result = result + multp
+  for (size_t i = 0; i < len; i++) {
+    int multp = vector[i] * vector[i];
+    result = result + multp;
+  }
+
+  // result = multp + multp
+  for (size_t i = 0; i < len; i++) {
+    int multp = vector[i] * vector[i];
+    result = multp + result;
+  }
+
+  // result = temp
+  for (size_t i = 0; i < len; i++) {
+    int multp = vector[i] * vector[i];
+    int temp = multp + result;
+    result = temp;
+  }
+
+  // single assignment, 1 op per assignment
+  for (size_t i = 0; i < len; i++) {
+    int vec1 = vector[i];
+    int vec2 = matrix_col[i];
+    int multp = vec1 * vec2;
+    int temp = multp + result;
+    result = temp;
   }
 }
 
