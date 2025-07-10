@@ -1,47 +1,21 @@
-import { BinaryOp, Call, Joinpoint, Literal, Loop, Op, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
+import { Expression, Literal, Program, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
-import { isDeclaredWithLiteral } from "../utils/declarations.js"
-import { getAllReferencesTo, isVarrefOf } from "../utils/varReferences.js"
-import { PositionRelToLoop, getNearestAncestorLoop, getPositionRelativeToOuterLoop } from "../utils/loops.js"
-import { isAddressof } from "../utils/unaryOperations.js";
-import { isConstant, isConstantIn, isConstantInAfter } from "../utils/constants.js";
-import { getAllIndirectAssignmentsIn } from "../utils/assignments.js";
+import { isVarrefOf } from "../utils/varReferences.js"
+import { isConstant } from "../utils/constants.js";
+import Graph from "@specs-feup/flow/graph/Graph";
+import ClavaCfgGenerator from "@specs-feup/clava-flow/transformation/ClavaCfgGenerator";
+import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
+import { getLastWrites } from "../cfg/writes.js";
 
-function constructValuesTable(variables: Vardecl[]): Map<Vardecl, Literal | null> {
-    const table = new Map<Vardecl, Literal | null>();
-    for (const variable of variables) {
-        if (!isDeclaredWithLiteral(variable)) {
-            table.set(variable, null);
-        }
-        else if (variable.children?.length === 1 && variable.getChild(0) instanceof Literal) {
-            table.set(variable, variable.getChild(0) as Literal);
-        } else {
-            throw new Error("Variable is declared with Literal but no Literal child found: " + variable.code);
-        }
+function areAllTheSameLiteral(exprs: Expression[]): boolean {
+    if (exprs.filter(expr => !(expr instanceof Literal)).length !== 0) return false;
+    if (exprs.length === 0) return true;
+    const first: Literal = exprs[0];
+    for (let i = 1; i < exprs.length; i++) {
+        if (first.constructor !== exprs[i].constructor || first.code !== exprs[i].code) return false;
     }
 
-    return table;
-}
-
-function canReplaceReadVarref(varref: Varref, valueInTable: Literal | null, positionInLoop: PositionRelToLoop): boolean {
-    if (valueInTable === null) return false;
-
-    if (varref.parent instanceof Op && isAddressof(varref.parent)) {
-        return false;
-    }
-
-    if (positionInLoop === PositionRelToLoop.OUTSIDE || positionInLoop === PositionRelToLoop.INITIALIZATION) {
-        return true;
-    }
-
-    const ancestorLoop: Loop = getNearestAncestorLoop(varref)!;
-
-    if ((positionInLoop === PositionRelToLoop.CONDITION || positionInLoop === PositionRelToLoop.STEP)) {
-        return isConstantIn(varref.decl as Vardecl, ancestorLoop);
-    } else if (positionInLoop === PositionRelToLoop.BODY) {
-        return isConstantInAfter(varref.decl as Vardecl, ancestorLoop, varref);
-    }
-    return false;
+    return true;
 }
 
 export function propagateConstants(): number {
@@ -49,55 +23,38 @@ export function propagateConstants(): number {
     let totalChanges: number = 0;
     let cycle: number = 0;
 
+    const constantGlobalVariables: Vardecl[] = Query.search(Vardecl, vardecl => vardecl.isGlobal && isConstant(vardecl)).get();
+    for (const constGlobalVariable of constantGlobalVariables) {
+        if (!constGlobalVariable.hasInit || !(constGlobalVariable.init instanceof Literal)) continue;
+        for (const varref of Query.search(Varref, varref => varref.use === "read" && isVarrefOf(varref, constGlobalVariable)).get()) {
+            varref.replaceWith(constGlobalVariable.init.copy());
+            totalChanges++;
+        }
+    }
+
     do {
-        totalChanges += iterationChanges;
+        const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
+            .apply(new ClavaCfgGenerator(Query.root() as Program));
+
         iterationChanges = 0;
 
-        const variables: Vardecl[] = Query.search(Vardecl, vardecl => !vardecl.isGlobal || isConstant(vardecl)).get();
-        const values: Map<Vardecl, Literal | null> = constructValuesTable(variables);
+        const variables: Vardecl[] = Query.search(Vardecl, vardecl => !vardecl.isGlobal).get();
+        const eligibleVarrefs: Varref[] = Query.search(Varref, varref => {
+            return varref.use === "read" 
+            && varref.vardecl !== undefined 
+            && variables.findIndex(vardecl => isVarrefOf(varref, vardecl)) !== -1
+            && !(varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of")
+            ;
+        }).get();
 
-        for (const variable of variables) {
-            const varrefs: Varref[] = getAllReferencesTo(variable);
-
-            for (const varref of varrefs) {
-                const relativeLoopPos: PositionRelToLoop = getPositionRelativeToOuterLoop(varref);
-
-                if (varref.use === "write") {
-                    const parent: Joinpoint = varref.parent;
-                    if (relativeLoopPos !== PositionRelToLoop.CONDITION && parent instanceof BinaryOp && parent.kind === "assign" && parent.right instanceof Literal) {
-                        values.set(variable, parent.right);
-                        continue;
-                    }
-                    values.set(variable, null);
-                    continue;
-                }
-
-                const currentVariableValue: Literal | null | undefined = values.get(variable);
-                if (currentVariableValue === undefined) {
-                    throw new Error("Variable not found in values table: " + variable.code);
-                }
-
-                if (varref.use === "read") {
-                    const parent = varref.parent;
-                    if (varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of" && varref.parent.parent instanceof Call && getAllIndirectAssignmentsIn(variable, varref.parent.parent).length !== 0) {
-                        values.set(variable, null);
-                        continue;
-                    }
-
-                    if (!canReplaceReadVarref(varref, currentVariableValue, relativeLoopPos)) {
-                        continue;
-                    }
-
-                    varref.replaceWith((currentVariableValue as Literal).copy());
-                    iterationChanges++;
-                } else if (varref.use === "readwrite") {
-                    values.set(variable, null);
-                } else {
-                    throw new Error("Unknown varref use");
-                }
-            }
+        for (const eligibleVarref of eligibleVarrefs) {
+            const lastWrites: Expression[] = getLastWrites(cfg, eligibleVarref);
+            if (lastWrites.length === 0 || !areAllTheSameLiteral(lastWrites)) continue;
+            eligibleVarref.replaceWith(lastWrites[0].copy());
+            iterationChanges++;
         }
 
+        totalChanges += iterationChanges;
         cycle++;
     } while (iterationChanges > 0 && cycle < 100);
 

@@ -1,4 +1,4 @@
-import { BinaryOp, Expression, Joinpoint, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
+import { BinaryOp, Expression, Joinpoint, Op, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 
 export function getAllReferencesTo(variable: Vardecl): Varref[] {
@@ -25,11 +25,11 @@ export function isVarrefOf(jp: Joinpoint, varDecl: Vardecl): boolean {
 export function getAssignedExpression(varref: Varref): Expression {
     if (varref.use === "read") throw new Error(`Tried to get assigned value of a varref with use 'read'`);
 
-    if (varref.use === "readwrite" && !(varref.parent instanceof UnaryOp)) {
+    if (varref.use === "readwrite" && !(varref.parent instanceof Op)) {
         throw new Error(`readwrite varref «${varref.code}» of line ${varref.line} is not the child of a unary operator: «${varref.parent.code}»`);
     }
     if (varref.use === "readwrite") {
-        return varref.parent as UnaryOp;
+        return varref.parent as Op;
     }
     if (varref.use === "write" && varref.parent instanceof BinaryOp && varref.parent.left.equals(varref)) {
         return varref.parent.right;

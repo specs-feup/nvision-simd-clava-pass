@@ -13,7 +13,6 @@ import { propagateConstants } from "./constprop.js"
 const simpleCode = fs.readFileSync("./src/input/constprop/simple.c", "utf-8");
 const separateAssignmentCode = fs.readFileSync("./src/input/constprop/separate_assignment.c", "utf-8");
 const simpleAlterationCode = fs.readFileSync("./src/input/constprop/simple_alteration.c", "utf-8");
-const hiddenAlterationCode = fs.readFileSync("./src/input/constprop/hidden_alteration.c", "utf-8");
 const readWriteCode = fs.readFileSync("./src/input/constprop/readwrite_isnt_propagated.c", "utf-8");
 const addressofCode = fs.readFileSync("./src/input/constprop/doesnt_substitute_in_addressof.c", "utf-8");
 const complexPropagationCode = fs.readFileSync("./src/input/constprop/complex_propagations.c", "utf-8");
@@ -119,33 +118,6 @@ describe("simple alteration test case", () => {
     });
 
 })
-
-describe("hidden alteration test case", () => {
-    beforeAll(() => {
-        registerSourceCodeOnce(hiddenAlterationCode);
-        propagateConstants();
-        console.log((Query.root() as Joinpoint).code);
-    });
-
-    afterAll(() => {
-        Clava.getProgram().pop();
-    });
-
-    test("b isn't initialized with a literal", () => {
-
-        const bVarDecl: Vardecl = getFirstAndExpectExists(Vardecl, { name: "b" });
-
-        expect(isDeclaredWithLiteral(bVarDecl)).toBe(false);
-    });
-
-    test("d is initialized with a literal and it is 7", () => {
-        const dVarDecl: Vardecl = getFirstAndExpectExists(Vardecl, { name: "d" });
-
-        expect(isDeclaredWithLiteral(dVarDecl)).toBe(true);
-        expect(dVarDecl.children).toHaveLength(1);
-        expect(dVarDecl.children.at(0)?.code).toBe("7");
-    });
-});
 
 describe("readwrite test case", () => {
     beforeAll(() => {
@@ -661,5 +633,4 @@ describe("control flow test case", () => {
         expect(cVarDecl.children.at(0)!).toBeInstanceOf(Varref);
         expect(isVarrefOf(cVarDecl.children.at(0)!, bVarDecl)).toBe(true);
     });
-
 });

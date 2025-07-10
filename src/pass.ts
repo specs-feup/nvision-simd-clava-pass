@@ -1,5 +1,5 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
@@ -10,11 +10,6 @@ import Graph from "@specs-feup/flow/graph/Graph";
 import ClavaCfgGenerator from "@specs-feup/clava-flow/transformation/ClavaCfgGenerator";
 import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormatter";
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
-import { getAncestorStmt } from "./utils/statements.js";
-import VariableDeclarationNode from "@specs-feup/clava-flow/cfg/node/VariableDeclarationNode";
-import { getByAstId } from "./cfg/search.js";
-import VisualizationTool from "@specs-feup/clava-visualization/api/VisualizationTool.js"
-import { tryAs } from "./utils/conversion.js";
 import { valueIs } from "./cfg/valueIs.js";
 
 const packingFactorAcceptedArrayTypes = new Map([
