@@ -1,5 +1,5 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
@@ -78,7 +78,16 @@ function isValidArrayAccess(jp: Joinpoint, loop: Loop, packingFactor: number, cf
     if (loop.controlVarref?.vardecl === undefined) return false;
     const controlVardecl: Vardecl = loop.controlVarref.vardecl;
 
-    if (Query.searchFrom(arrayAccessValue, Varref, varref => isVarrefOf(varref, controlVardecl) && !isInsideMultiplication(varref)).get().length === 0) return false;
+    for (let i = 0; i < arrayAccessValue.numSubscripts - 1; i++) {
+        if (Query.searchFromInclusive(arrayAccessValue.subscript[i], Varref, varref => isVarrefOf(varref, controlVardecl)).get().length !== 0) return false;
+    }
+
+    const lastSubscript: Expression = arrayAccessValue.subscript[arrayAccessValue.numSubscripts - 1];
+    if (lastSubscript === undefined) throw new Error(`Array access without subscript: «${arrayAccessValue.code}»`);
+
+    const controlVarAccessesInLastSubscript: Varref[] = Query.searchFromInclusive(lastSubscript, Varref, varref => isVarrefOf(varref, controlVardecl)).get();
+
+    if (controlVarAccessesInLastSubscript.length !== 1 || isInsideMultiplication(controlVarAccessesInLastSubscript[0])) return false;
 
     return true;
 }
@@ -109,12 +118,21 @@ function isValidAccumulatorIncrease(jp: Joinpoint, accumVarref: Varref, loop: Lo
 function isValidAccumulatorAssignment(jp: Joinpoint, accumVarref: Varref, loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
     if (!(jp instanceof BinaryOp)) return false;
     const accumAssignment: BinaryOp = jp as BinaryOp;
-    if (accumAssignment.kind !== "assign" || !jp.left.equals(accumVarref)) return false;
 
-    return isValidAccumulatorIncrease(accumAssignment.right, accumVarref, loop, packingFactor, cfg);
+    if (!accumAssignment.left.equals(accumVarref)) return false;
+
+    if (accumAssignment.kind === "assign") {
+        return isValidAccumulatorIncrease(accumAssignment.right, accumVarref, loop, packingFactor, cfg);
+    }
+
+    if (accumAssignment.kind === "add_assign") {
+        return isValidVectorMultiplication(accumAssignment.right, loop, packingFactor, cfg);
+    }
+
+    return false;
 }
 
-function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
+export function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>): boolean {
     if (!packingFactorAcceptedArrayTypes.has(packingFactor)) {
         throw new Error(`Tried to use unsupported packingFactor: ${packingFactor}`);
     }
@@ -143,14 +161,23 @@ function loopIsSuitable(loop: Loop, packingFactor: number, cfg: ClavaFlowGraph.C
     return isValidAccumulatorAssignment(accumVarref.parent, accumVarref, loop, packingFactor, cfg);
 }
 
+function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess): Expression {
+    if (arrAccess.numSubscripts <= 1) return arrAccess.arrayVar;
+    const subscriptsCopy: Expression[] = [...arrAccess.subscript];
+    subscriptsCopy.pop();
+
+    const newArrayAccess: ArrayAccess = ClavaJoinPoints.arrayAccess(arrAccess.arrayVar, ...subscriptsCopy);
+    return newArrayAccess;
+}
+
 function applyTransformation(suitableForLoop: Loop, packingFactor: number): void {
     const accumVarref: Varref = Query.searchFrom(suitableForLoop, Body).search(BinaryOp, { kind: "assign" }).search(Varref, { use: "write" }).getFirst()!;
     const arrayAccesses: ArrayAccess[] = Query.searchFrom(suitableForLoop, ArrayAccess).get();
 
     if (arrayAccesses.length !== 1 && arrayAccesses.length !== 2) throw new Error(`Unsupported number of array accesses: «${arrayAccesses.length}», loop code = ${suitableForLoop.code}`);
 
-    const arrayA: Varref = arrayAccesses[0].arrayVar as Varref;
-    const arrayB: Varref = (arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]).arrayVar as Varref;
+    const arrayA: Expression = getArrayAccessWithoutLastSubscript(arrayAccesses[0]);
+    const arrayB: Expression = getArrayAccessWithoutLastSubscript(arrayAccesses.length === 1 ? arrayAccesses[0] : arrayAccesses[1]);
     const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `nvision_matrix_col_${packingFactor === 4 ? 8 : 16}b` }).getFirst()!;
     const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA.copy() as Varref, arrayB.copy() as Varref, ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref), ClavaJoinPoints.exprLiteral(suitableForLoop.endValue));
     suitableForLoop.replaceWith(callToSubFunction);
