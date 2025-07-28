@@ -12,14 +12,14 @@ export function getAllReferencesTo(variable: Vardecl): Varref[] {
  * @param varDecl Variable that is being search
  */
 export function containsVarrefOf(jp: Joinpoint, varDecl: Vardecl): boolean {
-    return Query.searchFromInclusive(jp, Varref, varref => varref.decl.equals(varDecl)).get().length !== 0;
+    return Query.searchFromInclusive(jp, Varref, varref => varref.decl.astId === varDecl.astId).get().length !== 0;
 }
 
 /**
  * Checks whether the provided Joinpoint is a Varref of the provided varDecl
  */
 export function isVarrefOf(jp: Joinpoint, varDecl: Vardecl): boolean {
-    return jp instanceof Varref && jp.decl !== undefined && jp.decl !== null && jp.decl.equals(varDecl);
+    return jp instanceof Varref && jp.decl !== undefined && jp.decl !== null && jp.decl.astId === varDecl.astId;
 }
 
 export function getAssignedExpression(varref: Varref): Expression {
@@ -31,7 +31,7 @@ export function getAssignedExpression(varref: Varref): Expression {
     if (varref.use === "readwrite") {
         return varref.parent as Op;
     }
-    if (varref.use === "write" && varref.parent instanceof BinaryOp && varref.parent.left.equals(varref)) {
+    if (varref.use === "write" && varref.parent instanceof BinaryOp && varref.parent.left.astId === varref.astId) {
         return varref.parent.right;
     }
 

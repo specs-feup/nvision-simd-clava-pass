@@ -40,11 +40,11 @@ export function propagateConstants(): number {
 
         const variables: Vardecl[] = Query.search(Vardecl, vardecl => !vardecl.isGlobal).get();
         const eligibleVarrefs: Varref[] = Query.search(Varref, varref => {
-            return varref.use === "read" 
-            && varref.vardecl !== undefined 
-            && variables.findIndex(vardecl => isVarrefOf(varref, vardecl)) !== -1
-            && !(varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of")
-            ;
+            return varref.use === "read"
+                && varref.vardecl !== undefined
+                && variables.findIndex(vardecl => isVarrefOf(varref, vardecl)) !== -1
+                && !(varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of")
+                ;
         }).get();
 
         for (const eligibleVarref of eligibleVarrefs) {

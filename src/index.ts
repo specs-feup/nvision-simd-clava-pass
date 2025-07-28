@@ -1,3 +1,3 @@
 import { applyPass } from "./pass.js";
 
-await applyPass();
+await applyPass(4, false);

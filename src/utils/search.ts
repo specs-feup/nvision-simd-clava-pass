@@ -5,7 +5,7 @@ import { type Filter_WrapperVariant } from "@specs-feup/lara/api/weaver/Selector
 import { getAllCalledFunctions } from "./calls.js";
 
 function isAfterReferenceIndex(consideredJoinpoints: Joinpoint[], referenceIndex: number, jp: Joinpoint): boolean {
-    return consideredJoinpoints.findIndex(findIndexJp => findIndexJp.equals(jp)) >= referenceIndex;
+    return consideredJoinpoints.findIndex(findIndexJp => findIndexJp.astId === jp.astId) >= referenceIndex;
 }
 
 /**
@@ -29,7 +29,7 @@ export function getFromAfter<T extends typeof Joinpoint>(
     searchCalls: boolean = false
 ): InstanceType<T>[] {
     const jpsInsideBaseJp: Joinpoint[] = Query.searchFromInclusive(baseJp, Joinpoint).get();
-    const referenceIndex: number = jpsInsideBaseJp.findIndex((jp) => jp.equals(referenceJp)) + (referenceInclusive ? 0 : 1);
+    const referenceIndex: number = jpsInsideBaseJp.findIndex((jp) => jp.astId === referenceJp.astId) + (referenceInclusive ? 0 : 1);
 
     if (referenceIndex === -1) {
         throw new Error(`getFromAfter: referenceJp:\n${referenceJp.code}'\n\nis not a child of (or the very same) baseJp:\n${baseJp.code}\n`);

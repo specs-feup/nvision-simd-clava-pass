@@ -1,7 +1,6 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
 import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
-import SimplifyAssignment from "@specs-feup/clava/api/clava/code/SimplifyAssignment.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
 import { isVarrefOf } from "./utils/varReferences.js";
@@ -45,20 +44,35 @@ function hasConstantPredictableStep(loop: Loop): boolean {
     return isConstantIn(loop.controlVarref.vardecl, loop.body);
 }
 
-function endValueIsConstant(loop: Loop): boolean {
+function endValueIsConstant(loop: Loop, silent = true): boolean {
     let endValue: string = loop.endValue;
 
     if (endValue === undefined || endValue === null) return true;
 
     let endValueIsLiteral: boolean = Number.isSafeInteger(parseFloat(endValue));
-
+    if (!silent) console.log(`\tend value is «${endValue}», therefore it is${endValueIsLiteral ? "" : " not"} constant`);
     return endValueIsLiteral;
 }
 
-function hasRegularControlFlow(loop: Loop): boolean {
+function hasRegularControlFlow(loop: Loop, silent = true): boolean {
     let hasNoCustomControlFlow: boolean = Query.searchFrom(loop, Statement, altersControlFlow).get().length === 0;
 
-    return hasNoCustomControlFlow && hasConstantPredictableStep(loop) && endValueIsConstant(loop);
+    if (!hasNoCustomControlFlow) {
+        if (!silent) console.log(`\tLoop has control-flow altering statements, therefore it is not valid`);
+        return false;
+    }
+
+    if (!hasConstantPredictableStep(loop)) {
+        if (!silent) console.log(`\tLoop does not have constant predictable step, therefore it is not valid`);
+        return false;
+    }
+
+    if (!endValueIsConstant(loop, silent)) {
+        if (!silent) console.log(`\tLoop's end value is not constant, therefore it is not valid`);
+        return false;
+    }
+
+    return true;
 }
 
 function isInsideMultiplication(jp: Joinpoint): boolean {
@@ -77,7 +91,7 @@ function getExternalVariableWrites(baseJp: Joinpoint): Varref[] {
         if (!(varref.use === "write" || varref.use === "readwrite")) return false;
 
         if (varref.vardecl === undefined || varref.vardecl === null) return false;
-        return declaredVariablesInLoop.filter(vardecl => vardecl.equals(varref.vardecl)).length === 0;
+        return declaredVariablesInLoop.filter(vardecl => vardecl.astId === varref.vardecl.astId).length === 0;
     }).get();
 
     return externalVariableModifications;
@@ -288,7 +302,7 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        if (!hasRegularControlFlow(loop)) {
+        if (!hasRegularControlFlow(loop, this.silent)) {
             this.logLoop("is invalid since its control flow is not regular\n");
             return false;
         }
@@ -374,9 +388,11 @@ export class VecMulAccumulationReplacer {
 }
 
 export function applyPass(packingFactor: number = 4, silent: boolean = true): void {
-    // Clava.pushAst();
-    propagateAndFoldConstants();
+    // console.log((Query.root() as Joinpoint).code);
+    Clava.pushAst();
 
+    if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
+    
     const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
         .apply(new ClavaCfgGenerator(Query.root() as Program));
 
@@ -388,8 +404,7 @@ export function applyPass(packingFactor: number = 4, silent: boolean = true): vo
         vecMulReplacer.analyseLoopValidity(loop);
     }
 
-    // Clava.popAst();
-    // await VisualizationTool.visualize();
+    Clava.popAst();
 
     vecMulReplacer.applyTransformations();
 

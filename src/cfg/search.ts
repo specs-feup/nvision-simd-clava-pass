@@ -39,7 +39,7 @@ function findConditionOrItsDescendantInCfg(cfg: ClavaFlowGraph.Class, jp: Joinpo
 
         const conditionNode = node.as(ConditionNode);
 
-        if (conditionNode.condition?.equals(jp) || conditionNode.condition?.contains(jp)) return conditionNode;
+        if (conditionNode.condition?.astId === jp.astId || conditionNode.condition?.contains(jp)) return conditionNode;
     }
 
     return undefined;
@@ -59,7 +59,7 @@ export function findInCfg(cfg: ClavaFlowGraph.Class, jp: Joinpoint): ClavaNode.C
 
         const toSearch: Joinpoint[] = necessarilyTopLevel ? [cNode.jp] : Query.searchFromInclusive(cNode.jp, Joinpoint).get()
         if (toSearch
-            .filter(candidate => jp.equals(candidate))
+            .filter(candidate => jp.astId === candidate.astId)
             .length !== 0) {
             return cNode;
         }

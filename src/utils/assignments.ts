@@ -15,7 +15,7 @@ import { getFromAfter } from "./search.js";
  */
 export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoint, referenceJp: Joinpoint, referenceInclusive: boolean = false): Op[] {
     return getFromAfter(baseJp, Varref, referenceJp, (varref) => {
-        if (varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+        if (varref.vardecl?.astId === varDecl.astId && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;
@@ -31,7 +31,7 @@ export function getAllDirectAssignmentsInAfter(varDecl: Vardecl, baseJp: Joinpoi
  */
 export function getAllDirectAssignmentsIn(varDecl: Vardecl, baseJp: Joinpoint): Op[] {
     return Query.searchFromInclusive(baseJp, Varref, (varref) => {
-        if (!varref.isFunctionCall && varref.vardecl !== undefined && varref.vardecl !== null && varref.vardecl?.equals(varDecl) && (varref.use === "write" || varref.use === "readwrite")) {
+        if (!varref.isFunctionCall && varref.vardecl !== undefined && varref.vardecl !== null && varref.vardecl?.astId === varDecl.astId && (varref.use === "write" || varref.use === "readwrite")) {
             return true;
         }
         return false;
@@ -49,7 +49,7 @@ export function getAllDerefAssignmentsInAfter(baseJp: Joinpoint, varDecl: Vardec
     return getFromAfter(baseJp, UnaryOp, referenceJp, unaryOp => {
         return unaryOp.kind === "deref" &&
             (unaryOp.use === "write" || unaryOp.use === "readwrite") &&
-            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.equals(varDecl);
+            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.astId === varDecl.astId;
     }, referenceInclusive, true);
 }
 
@@ -62,7 +62,7 @@ export function getAllDerefAssignmentsIn(baseJp: Joinpoint, varDecl: Vardecl): O
     return Query.searchFromInclusive(baseJp, UnaryOp, unaryOp => {
         return unaryOp.kind === "deref" &&
             (unaryOp.use === "write" || unaryOp.use === "readwrite") &&
-            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.equals(varDecl);
+            unaryOp.children.at(0) instanceof Varref && (unaryOp.children.at(0) as Varref)?.decl?.astId === varDecl.astId;
     }).get();
 }
 

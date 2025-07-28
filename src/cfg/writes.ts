@@ -20,7 +20,7 @@ function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, che
 
     if (currentNode.is(VariableDeclarationNode)) {
         const currVardecl: Vardecl = currentNode.as(VariableDeclarationNode).jp;
-        if (currVardecl.equals(vardecl)) {
+        if (currVardecl.astId === vardecl.astId) {
             return currVardecl.hasChildren ? [currVardecl.firstChild as Expression] : [];
         }
     }
