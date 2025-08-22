@@ -22,6 +22,7 @@ const loopContinuityCode = fs.readFileSync("./src/input/constprop/loop_continuit
 const nestedLoopsCode = fs.readFileSync("./src/input/constprop/nested_loops.c", "utf-8");
 const globalsCode = fs.readFileSync("./src/input/constprop/globals.c", "utf-8");
 const controlFlowCode = fs.readFileSync("./src/input/constprop/control_flow.c", "utf-8");
+const stringAndCharLiteralsCode = fs.readFileSync("./src/input/constprop/string_and_char_literals.c", "utf-8");
 
 describe("simple test case", () => {
     beforeAll(() => {
@@ -116,7 +117,6 @@ describe("simple alteration test case", () => {
         const literals: Literal[] = Query.search(Literal).get();
         expect(literals).toHaveLength(4);
     });
-
 })
 
 describe("readwrite test case", () => {
@@ -634,3 +634,32 @@ describe("control flow test case", () => {
         expect(isVarrefOf(cVarDecl.children.at(0)!, bVarDecl)).toBe(true);
     });
 });
+
+describe("string and char literals test case", () => {
+    beforeAll(() => {
+        registerSourceCodeOnce(stringAndCharLiteralsCode);
+        propagateConstants();
+        console.log((Query.root() as Joinpoint).code);
+    });
+
+    afterAll(() => {
+        Clava.getProgram().pop();
+    });
+
+    test("c is initialized with a literal", () => {
+
+        const cVarDecl: Vardecl = getFirstAndExpectExists(Vardecl, { name: "c" });
+        expect(isDeclaredWithLiteral(cVarDecl)).toBe(true);
+    });
+
+    test("d is initialized with a literal", () => {
+        const dVarDecl: Vardecl = getFirstAndExpectExists(Vardecl, { name: "d" });
+        expect(isDeclaredWithLiteral(dVarDecl)).toBe(true);
+    });
+
+    test("the varref to a in the initialization of e is gone, but the sum remains", () => {
+        const eVarDecl: Vardecl = getFirstAndExpectExists(Vardecl, { name: "e" });
+        expect(Query.searchFrom(eVarDecl, BinaryOp, { kind: "add"}).get()).toHaveLength(1);
+        expect(Query.searchFrom(eVarDecl, Varref, { name: "a"}).get()).toHaveLength(0);
+    });
+})

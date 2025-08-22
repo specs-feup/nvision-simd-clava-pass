@@ -263,7 +263,7 @@ export class VecMulAccumulationReplacer {
         const accumAssignment: BinaryOp = jp as BinaryOp;
 
         if (!accumAssignment.left.equals(this.currentAccumVarref!)) {
-            this.logJp(jp, "left value is the accumulator, therefore it does not consitutate a valid accumulator assignment. This is not supposed to happen.");
+            this.logJp(jp, "left value is the accumulator, therefore it does not constitute a valid accumulator assignment. This is not supposed to happen.");
             return false;
         }
 
