@@ -19,7 +19,7 @@ describe("debug", () => {
 
     test("debug", () => {
         console.log("before pass");
-        applyPass();
+        applyPass(true);
         console.log("after pass");
     });
 });

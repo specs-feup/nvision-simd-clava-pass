@@ -1,5 +1,5 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression, Cast, UnaryOp } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
@@ -12,10 +12,86 @@ import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { valueIs } from "./cfg/valueIs.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
 
-const packingFactorAcceptedArrayTypes = new Map([
-    [2, ["__int16_t", "__uint16_t", "int16_t", "uint16_t"]],
-    [4, ["__int8_t", "__uint8_t", "int8_t", "uint8_t"]]
-]);
+function bitwidthInRv32(type: string): number | undefined {
+    if (type.includes("char")) return 8;
+    if (type.includes("short")) return 16;
+    if (type.includes("int")) return 32;
+    if (type.includes("long long")) return 64;
+    if (type.includes("long")) return 32;
+
+    return undefined;
+}
+
+const SW_MAC_CODE_8: string = `
+signed int __nvision_sim_accum = 0;
+
+void __mac_8b(int a, int b, int c, int d) {
+  signed char *a_cast = (signed char *)(&a);
+  signed char *b_cast = (signed char *)(&b);
+  signed char *c_cast = (signed char *)(&c);
+  signed char *d_cast = (signed char *)(&d);
+
+  __nvision_sim_accum += a_cast[0] * b_cast[0];
+  __nvision_sim_accum += a_cast[1] * b_cast[1];
+  __nvision_sim_accum += a_cast[2] * b_cast[2];
+  __nvision_sim_accum += a_cast[3] * b_cast[3];
+
+  __nvision_sim_accum += c_cast[0] * d_cast[0];
+  __nvision_sim_accum += c_cast[1] * d_cast[1];
+  __nvision_sim_accum += c_cast[2] * d_cast[2];
+  __nvision_sim_accum += c_cast[3] * d_cast[3];
+}
+
+int __read_clear() {
+  inr temp = __nvision_sim_accum;
+  __nvision_sim_accum = 0;
+
+  return temp;
+}
+`
+
+const HW_MAC_CODE_8: string = `
+void __mac_8b(int a, int b, int c, int d) {
+  asm volatile(".insn r 0b0001011, 0x02, 0x0, x0, %[RS1], %[RS2]\\n"
+               ".insn r 0b0001011, 0x02, 0x0, x0, %[RS3], %[RS4]"
+               :
+               : [RS1] "r"(a), [RS2] "r"(b), [RS3] "r"(c), [RS4] "r"(d));
+}
+
+int __read_clear() {
+  int result = 0;
+  asm volatile(".insn r 0b0001011, 0x07, 0x0, %[RD], x0, x0"
+               : [RD] "=r"(result));
+  return result;
+}
+`
+
+const WRAPPER_FUNCTION_CODE_8: string = `
+#include <stddef.h>
+
+void __mac_8b(int a, int b, int c, int d);
+int __read_clear();
+
+void __mac_wrapper_8b(signed char *A, signed char *B, int *accum,
+                           size_t length) {
+  __read_clear();
+
+  int mac_len = length / 8;
+  int *A_cast = (int *)A;
+  int *B_cast = (int *)B;
+
+  for (int i = 0; i < mac_len; i++) {
+    __mac_8b(A_cast[i * 2], B_cast[i * 2], A_cast[i * 2 + 1],
+               B_cast[i * 2 + 1]);
+  }
+
+  *accum += __read_clear();
+
+  for (int i = (length / 8) * 8; i < length; i++) {
+    *accum += A[i] * B[i];
+  }
+}
+`
 
 function altersControlFlow(stmt: Statement) {
     return stmt instanceof ReturnStmt || stmt instanceof GotoStmt || stmt instanceof Break || stmt instanceof Continue;
@@ -121,14 +197,14 @@ export class VecMulAccumulationReplacer {
     private currentAccumVarref: Varref | undefined;
     private currentArrayAccesses: ArrayAccess[];
     private validLoops: ValidLoopInfo[];
-    private packingFactor: number;
+    private operandBitwidth: number;
     private silent: boolean;
     private cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
 
-    public constructor(packingFactor: number, silent: boolean = true, cfg?: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>) {
+    public constructor(operandBitSize: number, silent: boolean = true, cfg?: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>) {
         this.currentArrayAccesses = [];
         this.validLoops = [];
-        this.packingFactor = packingFactor;
+        this.operandBitwidth = operandBitSize;
         this.silent = silent;
         this.cfg = cfg ?? Graph.create()
             .apply(new ClavaCfgGenerator(Query.root() as Program));
@@ -172,8 +248,14 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        if (!packingFactorAcceptedArrayTypes.get(this.packingFactor)?.includes(arrayAccessValue.type.desugar.code)) {
-            this.logJpAndValue(jp, arrayAccessValue, `type (${arrayAccessValue.type}) is not valid for a packing factor of ${this.packingFactor}`);
+        const arrayTypeSizeInBitsInRiscv32: number | undefined = bitwidthInRv32(arrayAccessValue.type.desugarAll.code);
+        if (arrayTypeSizeInBitsInRiscv32 === undefined) {
+            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors. The elements of an array should be of one of the following types: [char, short, int, long] and have bit size «${this.operandBitwidth}» in rv32`);
+            return false;
+        }
+
+        if (arrayTypeSizeInBitsInRiscv32 !== this.operandBitwidth) {
+            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors, since its bit size is «${arrayTypeSizeInBitsInRiscv32}» in rv32, and the hardware instructions expect operands with a bit width of «${this.operandBitwidth}»`);
             return false;
         }
 
@@ -293,8 +375,8 @@ export class VecMulAccumulationReplacer {
         this.currentLoop = loop;
         this.log(`Analysing Loop [${loop.line}:${loop.column}]`, "");
 
-        if (!packingFactorAcceptedArrayTypes.has(this.packingFactor)) {
-            throw new Error(`Tried to use unsupported packingFactor: ${this.packingFactor}`);
+        if (this.operandBitwidth !== 8) {
+            throw new Error(`Tried to use unsupported bitwidth: ${this.operandBitwidth}`);
         }
 
         if (loop.kind !== "for") {
@@ -339,6 +421,11 @@ export class VecMulAccumulationReplacer {
         const accumVarref: Varref = externalVariableModifications[0];
         this.currentAccumVarref = accumVarref;
 
+        if (bitwidthInRv32(accumVarref.type.desugarAll.code) !== 32) {
+            this.logJp(accumVarref, "is not a valid accumulator since its bitwidth is not 32");
+            return false;
+        }
+
         // the accumulation should be equivalent to accum += A[...] * B[...]
         if (this.isValidAccumulatorAssignment(accumVarref.parent)) {
             if (this.currentArrayAccesses.length !== 2) throw new Error(`Found a valid loop, but the number of current array accesses isn't 2 but instead ${this.currentArrayAccesses.length}`);
@@ -370,8 +457,15 @@ export class VecMulAccumulationReplacer {
 
         const arrayA: Expression = getArrayAccessWithoutLastSubscript(baseArrayAccessA);
         const arrayB: Expression = getArrayAccessWithoutLastSubscript(baseArrayAccessB);
-        const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `nvision_matrix_col_${this.packingFactor === 4 ? 8 : 16}b` }).getFirst()!;
-        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref), ClavaJoinPoints.exprLiteral(validLoop.endValue));
+
+        if (this.operandBitwidth !== 8) throw new Error("TODO");
+        const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `__mac_wrapper_${this.operandBitwidth}b` }).getFirst()!;
+
+        const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref);
+        const castPointerToAccum: Cast = ClavaJoinPoints.cStyleCast(ClavaJoinPoints.type("int*"), accumAddrof);
+
+        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, castPointerToAccum, ClavaJoinPoints.exprLiteral(validLoop.endValue));
+        
         this.log(`Transformed Loop [${validLoop.line}:${validLoop.column}]\n`);
         validLoop.replaceWith(callToSubFunction);
     }
@@ -387,18 +481,24 @@ export class VecMulAccumulationReplacer {
     }
 }
 
-export function applyPass(packingFactor: number = 4, silent: boolean = true): void {
-    // console.log((Query.root() as Joinpoint).code);
+function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
+    Clava.getProgram().files[0].insert("before", WRAPPER_FUNCTION_CODE_8);
+    Clava.rebuild();
+}
+
+export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: number = 8, silent: boolean = true): void {
+    attachNecessaryFunctions(useSoftwareSimInstructions);
+
     Clava.pushAst();
 
     if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
-    
+
     const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
         .apply(new ClavaCfgGenerator(Query.root() as Program));
 
     const formatter = new ClavaFlowDotFormatter();
     cfg.toFile(formatter, "dist/graph.dot");
-    const vecMulReplacer: VecMulAccumulationReplacer = new VecMulAccumulationReplacer(packingFactor, silent, cfg);
+    const vecMulReplacer: VecMulAccumulationReplacer = new VecMulAccumulationReplacer(operandBitwidth, silent, cfg);
 
     for (const loop of Query.search(Loop).get()) {
         vecMulReplacer.analyseLoopValidity(loop);
@@ -407,6 +507,7 @@ export function applyPass(packingFactor: number = 4, silent: boolean = true): vo
     Clava.popAst();
 
     vecMulReplacer.applyTransformations();
+    Clava.getProgram().files[0].insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_8 : HW_MAC_CODE_8);
 
     if (!silent) {
         console.log(`Applied transformations to ${vecMulReplacer.getValidLoopNumber()} loops`);

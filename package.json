@@ -30,7 +30,8 @@
     "forloop": "npx clava classic dist/js/index.js -j -p src/input/forloop.c -o dist/",
     "compileforloop": "gcc -o dist/forloop src/input/forloop.c && gcc -o dist/modifiedforloop dist/woven_code/forloop.c",
     "outputforloop": "echo 'normal forloop: ' && dist/forloop && echo 'modified forloop: ' && dist/modifiedforloop",
-    "buildrunforloop": "npm run clear && npm run build && npm run forloop && npm run compileforloop && npm run outputforloop"
+    "buildrunforloop": "npm run clear && npm run build && npm run forloop",
+    "buildruncompileforloop": "npm run clear && npm run build && npm run forloop && npm run compileforloop && npm run outputforloop"
   },
   "author": "",
   "license": "ISC",
