@@ -1,4 +1,4 @@
-import { Expression, Joinpoint, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
+import { BinaryOp, Expression, Joinpoint, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 
 import VariableDeclarationNode from "@specs-feup/clava-flow/cfg/node/VariableDeclarationNode";
@@ -43,6 +43,9 @@ function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, che
             ).get();
 
         if (useVarrefs.length > 1) {
+            if (useVarrefs[0].parent instanceof BinaryOp && useVarrefs[0].parent.kind.includes("assign")) {
+                return [getAssignedExpression(useVarrefs[0])];
+            }
             throw new Error(`The program contains unspecified behaviour: «${searchStartNode.code}»`);
         } else if (useVarrefs.length === 1) {
             return [getAssignedExpression(useVarrefs[0])];

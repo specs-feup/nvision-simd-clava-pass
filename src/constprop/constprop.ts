@@ -1,4 +1,4 @@
-import { Expression, Literal, Program, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
+import { Expression, Literal, MemberAccess, Program, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import { isVarrefOf } from "../utils/varReferences.js"
 import { isConstant } from "../utils/constants.js";
@@ -7,7 +7,7 @@ import ClavaCfgGenerator from "@specs-feup/clava-flow/transformation/ClavaCfgGen
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { getLastWrites } from "../cfg/writes.js";
 
-function areAllTheSameLiteral(exprs: Expression[]): boolean {
+export function areAllTheSameLiteral(exprs: Expression[]): boolean {
     if (exprs.filter(expr => !(expr instanceof Literal)).length !== 0) return false;
     if (exprs.length === 0) return true;
     const first: Literal = exprs[0];
@@ -44,6 +44,7 @@ export function propagateConstants(): number {
                 && varref.vardecl !== undefined
                 && variables.findIndex(vardecl => isVarrefOf(varref, vardecl)) !== -1
                 && !(varref.parent instanceof UnaryOp && varref.parent.kind === "addr_of")
+                && !(varref.parent instanceof MemberAccess)
                 ;
         }).get();
 

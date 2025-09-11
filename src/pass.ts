@@ -1,5 +1,5 @@
 import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression, Cast, UnaryOp } from "@specs-feup/clava/api/Joinpoints.js"
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression, Cast, UnaryOp, ParenExpr } from "@specs-feup/clava/api/Joinpoints.js"
 import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
@@ -11,6 +11,8 @@ import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormat
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { valueIs } from "./cfg/valueIs.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
+import { getLastWrites } from "./cfg/writes.js";
+import { areAllTheSameLiteral } from "./constprop/constprop.js";
 
 function bitwidthInRv32(type: string): number | undefined {
     if (type.includes("char")) return 8;
@@ -25,7 +27,7 @@ function bitwidthInRv32(type: string): number | undefined {
 const SW_MAC_CODE_8: string = `
 signed int __nvision_sim_accum = 0;
 
-void __mac_8b(int a, int b, int c, int d) {
+inline static void __mac_8b(int a, int b, int c, int d) {
   signed char *a_cast = (signed char *)(&a);
   signed char *b_cast = (signed char *)(&b);
   signed char *c_cast = (signed char *)(&c);
@@ -42,40 +44,15 @@ void __mac_8b(int a, int b, int c, int d) {
   __nvision_sim_accum += c_cast[3] * d_cast[3];
 }
 
-int __read_clear() {
-  inr temp = __nvision_sim_accum;
+inline static int __read_clear() {
+  int temp = __nvision_sim_accum;
   __nvision_sim_accum = 0;
 
   return temp;
 }
-`
 
-const HW_MAC_CODE_8: string = `
-void __mac_8b(int a, int b, int c, int d) {
-  asm volatile(".insn r 0b0001011, 0x02, 0x0, x0, %[RS1], %[RS2]\\n"
-               ".insn r 0b0001011, 0x02, 0x0, x0, %[RS3], %[RS4]"
-               :
-               : [RS1] "r"(a), [RS2] "r"(b), [RS3] "r"(c), [RS4] "r"(d));
-}
-
-int __read_clear() {
-  int result = 0;
-  asm volatile(".insn r 0b0001011, 0x07, 0x0, %[RD], x0, x0"
-               : [RD] "=r"(result));
-  return result;
-}
-`
-
-const WRAPPER_FUNCTION_CODE_8: string = `
-#include <stddef.h>
-
-void __mac_8b(int a, int b, int c, int d);
-int __read_clear();
-
-void __mac_wrapper_8b(signed char *A, signed char *B, int *accum,
+inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
                            size_t length) {
-  __read_clear();
-
   int mac_len = length / 8;
   int *A_cast = (int *)A;
   int *B_cast = (int *)B;
@@ -91,6 +68,50 @@ void __mac_wrapper_8b(signed char *A, signed char *B, int *accum,
     *accum += A[i] * B[i];
   }
 }
+`
+
+const HW_MAC_CODE_8: string = `
+inline static void __mac_8b(int a, int b, int c, int d) {
+  asm volatile(".insn r 0b0001011, 0x02, 0x0, x0, %[RS1], %[RS2]\\n"
+               ".insn r 0b0001011, 0x02, 0x0, x0, %[RS3], %[RS4]"
+               :
+               : [RS1] "r"(a), [RS2] "r"(b), [RS3] "r"(c), [RS4] "r"(d));
+}
+
+inline static int __read_clear() {
+  int result = 0;
+  asm volatile(".insn r 0b0001011, 0x07, 0x0, %[RD], x0, x0"
+               : [RD] "=r"(result));
+  return result;
+}
+
+inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
+                           size_t length) {
+  int mac_len = length / 8;
+  int *A_cast = (int *)A;
+  int *B_cast = (int *)B;
+
+  for (int i = 0; i < mac_len; i++) {
+    __mac_8b(A_cast[i * 2], B_cast[i * 2], A_cast[i * 2 + 1],
+               B_cast[i * 2 + 1]);
+  }
+
+  *accum += __read_clear();
+
+  for (int i = (length / 8) * 8; i < length; i++) {
+    *accum += A[i] * B[i];
+  }
+}
+`
+
+const WRAPPER_FUNCTION_CODE_8: string = `
+#include <stddef.h>
+
+inline static void __mac_8b(int a, int b, int c, int d);
+inline static int __read_clear();
+
+inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
+                           size_t length);
 `
 
 function altersControlFlow(stmt: Statement) {
@@ -126,7 +147,8 @@ function endValueIsConstant(loop: Loop, silent = true): boolean {
     if (endValue === undefined || endValue === null) return true;
 
     let endValueIsLiteral: boolean = Number.isSafeInteger(parseFloat(endValue));
-    if (!silent) console.log(`\tend value is «${endValue}», therefore it is${endValueIsLiteral ? "" : " not"} constant`);
+
+    if (!endValueIsLiteral && !silent) console.log(`\tEnd value is «${endValue}», therefore it may not be constant`);
     return endValueIsLiteral;
 }
 
@@ -134,17 +156,17 @@ function hasRegularControlFlow(loop: Loop, silent = true): boolean {
     let hasNoCustomControlFlow: boolean = Query.searchFrom(loop, Statement, altersControlFlow).get().length === 0;
 
     if (!hasNoCustomControlFlow) {
-        if (!silent) console.log(`\tLoop has control-flow altering statements, therefore it is not valid`);
+        if (!silent) console.log(`\tLoop has control-flow altering statements`);
         return false;
     }
 
     if (!hasConstantPredictableStep(loop)) {
-        if (!silent) console.log(`\tLoop does not have constant predictable step, therefore it is not valid`);
+        if (!silent) console.log(`\tLoop does not have constant predictable step`);
         return false;
     }
 
     if (!endValueIsConstant(loop, silent)) {
-        if (!silent) console.log(`\tLoop's end value is not constant, therefore it is not valid`);
+        if (!silent) console.log(`\tLoop's end value is not constant`);
         return false;
     }
 
@@ -155,6 +177,18 @@ function isInsideMultiplication(jp: Joinpoint): boolean {
     let parent: Joinpoint = jp.parent;
     while (parent instanceof Op) {
         if (parent instanceof BinaryOp && parent.kind === "mul") return true;
+        parent = parent.parent;
+    };
+
+    return false;
+}
+
+function isInsideOpThatIsNotAdd(jp: Joinpoint): boolean {
+    let parent: Joinpoint = jp.parent;
+    while (parent instanceof Op || parent instanceof ParenExpr) {
+        if (parent instanceof BinaryOp && parent.kind !== "add") return true;
+        if (parent instanceof UnaryOp) return true;
+
         parent = parent.parent;
     };
 
@@ -173,13 +207,35 @@ function getExternalVariableWrites(baseJp: Joinpoint): Varref[] {
     return externalVariableModifications;
 }
 
-function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess): Expression {
+function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess) {
     if (arrAccess.numSubscripts <= 1) return arrAccess.arrayVar.deepCopy() as Expression;
     const subscriptsCopy: Expression[] = [...arrAccess.subscript];
     subscriptsCopy.pop();
 
     const newArrayAccess: ArrayAccess = ClavaJoinPoints.arrayAccess(arrAccess.arrayVar, ...subscriptsCopy);
     return newArrayAccess;
+}
+
+function getArrayAccessWithoutControlVar(arrAccess: ArrayAccess, controlVar: Vardecl): Expression {
+    const controlVarVarref: Varref | undefined = Query.searchFromInclusive(arrAccess.subscript[arrAccess.numSubscripts - 1], Varref, varref => isVarrefOf(varref, controlVar)).getFirst();
+    if (controlVarVarref === undefined) throw new Error("Loop Control Var's Varref was not found in the last subscript, violating one of the preconditions for the loop being selected");
+
+    let lastPossibleChildOfParenthesis: Joinpoint = controlVarVarref;
+    let parent: Joinpoint = controlVarVarref.parent;
+
+    while (parent instanceof ParenExpr) {
+        lastPossibleChildOfParenthesis = parent;
+        parent = parent.parent;
+    }
+
+    if (parent instanceof ArrayAccess) return getArrayAccessWithoutLastSubscript(arrAccess);
+    if (parent instanceof BinaryOp && parent.kind === "add") {
+        const otherExpr: Expression = parent.left.astId === lastPossibleChildOfParenthesis.astId ? parent.right : parent.left;
+        parent.replaceWith(otherExpr);
+        return ClavaJoinPoints.unaryOp("&", ClavaJoinPoints.parenthesis(arrAccess.deepCopy() as Expression));
+    }
+
+    throw new Error(`Invalid array access: «${arrAccess.code}»: control var varref's parent is neither the ArrayAccess, a sum BinaryOp or a ParenthesisExpression, but instead «${controlVarVarref.parent.code}»`);
 }
 
 function logWithCodeAndPos(jp: Joinpoint, message: string, prefix: string = "") {
@@ -267,7 +323,10 @@ export class VecMulAccumulationReplacer {
         const controlVardecl: Vardecl = this.currentLoop?.controlVarref.vardecl;
 
         for (let i = 0; i < arrayAccessValue.numSubscripts - 1; i++) {
-            if (Query.searchFromInclusive(arrayAccessValue.subscript[i], Varref, varref => isVarrefOf(varref, controlVardecl)).get().length !== 0) return false;
+            if (Query.searchFromInclusive(arrayAccessValue.subscript[i], Varref, varref => isVarrefOf(varref, controlVardecl)).get().length !== 0) {
+                this.logJp(arrayAccessValue, `does not access memory continuously, since in each iteration it accesses a different subarray (loop control variable «${controlVardecl.name}» found in a subscript that isn't the last)`);
+                return false;
+            }
         }
 
         const lastSubscript: Expression = arrayAccessValue.subscript[arrayAccessValue.numSubscripts - 1];
@@ -275,18 +334,35 @@ export class VecMulAccumulationReplacer {
 
         const controlVarAccessesInLastSubscript: Varref[] = Query.searchFromInclusive(lastSubscript, Varref, varref => isVarrefOf(varref, controlVardecl)).get();
 
-        if (controlVarAccessesInLastSubscript.length !== 1) {
-            this.logJp(arrayAccessValue, `does not access memory continuously, since in each iteration it accesses a different subarray (loop control variable «${controlVardecl.name}» found in a subscript that isn't the last)`);
+        if (controlVarAccessesInLastSubscript.length === 0) {
+            this.logJp(arrayAccessValue, `does not access memory continuously, since in each iteration it does not move forward in the array (loop control variable «${controlVardecl.name}» not found in the array access' last subscript)`);
             return false;
         }
 
-        if (isInsideMultiplication(controlVarAccessesInLastSubscript[0])) {
-            this.logJp(arrayAccessValue, `does not access memory continuously, since in each iteration it does not move forward in the array (loop control variable «${controlVardecl.name}» not found in the access' subscript)`);
+        if (controlVarAccessesInLastSubscript.length > 1) {
+            this.logJp(arrayAccessValue, `may not access memory continuously since there are multiple references to the loop's control variable in the last subscript («${lastSubscript.code}»)`);
             return false;
+        }
+
+        if (isInsideOpThatIsNotAdd(controlVarAccessesInLastSubscript[0])) {
+            this.logJp(arrayAccessValue, `may not access memory continuously since the loop's control variable («${controlVardecl.name}») is inside an Op that is not a sum`);
+            return false;
+        }
+
+        const varrefsDeclaredInsideLoopNotControlVar: Varref[] = Query.searchFrom(arrayAccessValue, Varref, varref => {
+            return varref.vardecl !== undefined && !isVarrefOf(varref, this.currentLoop!.controlVarref.vardecl) && Query.searchFromInclusive(this.currentLoop!, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
+        }).get();
+
+        for (const varref of varrefsDeclaredInsideLoopNotControlVar) {
+            const lastWrites = getLastWrites(this.cfg, varref);
+            if (!areAllTheSameLiteral(lastWrites)) {
+                this.logJp(arrayAccessValue, `is not a valid array access since its subscripts contain the variable «${varref.code}, declared inside the loop, whose value cannot currently be known at compile time»`);
+                return false;
+            }
         }
 
         this.currentArrayAccesses.push(arrayAccessValue);
-        this.logJp(arrayAccessValue, "contains a valid array access");
+        // this.logJp(arrayAccessValue, "contains a valid array access");
         return true;
     }
 
@@ -329,7 +405,7 @@ export class VecMulAccumulationReplacer {
             ||
             isVarrefOf(increaseValue.right, this.currentAccumVarref!.vardecl) && this.isValidVectorMultiplication(increaseValue.left)
         ) {
-            this.logJpAndValue(jp, increaseValue, "constitutes a valid accumulator increase (it's a sum of the accumulator and the vector multiplication)");
+            // this.logJpAndValue(jp, increaseValue, "constitutes a valid accumulator increase (it's a sum of the accumulator and the vector multiplication)");
             return true;
         }
 
@@ -351,7 +427,7 @@ export class VecMulAccumulationReplacer {
 
         if (accumAssignment.kind === "assign") {
             if (this.isValidAccumulatorIncrease(accumAssignment.right)) {
-                this.logJp(jp, "is a valid accumulator assignment of type 'simple assignment'");
+                // this.logJp(jp, "is a valid accumulator assignment of type 'simple assignment'");
                 return true;
             }
             this.logJp(jp, "is not a valid accumulator assignment of type 'simple assignment'");
@@ -360,7 +436,7 @@ export class VecMulAccumulationReplacer {
 
         if (accumAssignment.kind === "add_assign") {
             if (this.isValidVectorMultiplication(accumAssignment.right)) {
-                this.logJp(jp, "is a valid accumulator assignment of type 'add and assign'");
+                // this.logJp(jp, "is a valid accumulator assignment of type 'add and assign'");
                 return true;
             }
             this.logJp(jp, "is not a valid accumulator assignment of type 'add and assign'");
@@ -380,22 +456,22 @@ export class VecMulAccumulationReplacer {
         }
 
         if (loop.kind !== "for") {
-            this.logLoop("is invalid since it is not a for loop\n");
+            this.log("Loop is invalid since it is not a for loop\n");
             return false;
         }
 
         if (!hasRegularControlFlow(loop, this.silent)) {
-            this.logLoop("is invalid since its control flow is not regular\n");
+            this.log("Loop is invalid since its control flow is not regular\n");
             return false;
         }
 
         if (parseFloat(loop.initValue) !== 0 || !Number.isSafeInteger(parseFloat(loop.initValue))) {
-            this.logLoop(`is invalid since its init value is not 0 but «${loop.initValue}» (currently unsupported)\n`);
+            this.log(`Loop is invalid since its init value is not 0 but «${loop.initValue}» (currently unsupported)\n`);
             return false;
         }
 
         if (parseFloat(loop.stepValue) !== 1 || !Number.isSafeInteger(parseFloat(loop.stepValue))) {
-            this.logLoop(`is invalid since its step value is not 1 but «${loop.stepValue}» (memory accesses must be continuous)\n`);
+            this.log(`Loop is invalid since its step value is not 1 but «${loop.stepValue}» (memory accesses must be continuous)\n`);
             return false;
         }
 
@@ -404,17 +480,17 @@ export class VecMulAccumulationReplacer {
         const calls: Call[] = Query.searchFrom(loop, Call).get();
 
         if (calls.length !== 0) {
-            this.logLoop("is invalid since it contains function calls (loop must not produce side effects aside from the accumulator)\n");
+            this.log("Loop is invalid since it contains function calls (loop must not produce side effects aside from the accumulator)\n");
             return false;
         }
 
         if (externalVariableModifications.length === 0) {
-            this.logLoop(`is invalid since it doesn't alter a single variable declared outside of the loop (loop must modify an accumulator that was declared outside of the loop)\n`);
+            this.log(`Loop is invalid since it doesn't alter a single variable declared outside of the loop (loop must modify an accumulator that was declared outside of the loop)\n`);
             return false
         }
 
         if (externalVariableModifications.length > 1) {
-            this.logLoop(`is invalid since it alters multiple variables declared outside of the loop «${externalVariableModifications.map(varref => `${varref.code} [${varref.line}:${varref.column}]`)}» (loop must not produce side effects aside from the accumulator)\n`);
+            this.log(`Loop is invalid since it alters multiple variables declared outside of the loop «${externalVariableModifications.map(varref => `${varref.code} [${varref.line}:${varref.column}]`)}» (loop must not produce side effects aside from the accumulator)\n`);
             return false;
         }
 
@@ -422,7 +498,7 @@ export class VecMulAccumulationReplacer {
         this.currentAccumVarref = accumVarref;
 
         if (bitwidthInRv32(accumVarref.type.desugarAll.code) !== 32) {
-            this.logJp(accumVarref, "is not a valid accumulator since its bitwidth is not 32");
+            this.logJp(accumVarref, "is not a valid accumulator since its bitwidth is not 32 in RV32");
             return false;
         }
 
@@ -430,7 +506,7 @@ export class VecMulAccumulationReplacer {
         if (this.isValidAccumulatorAssignment(accumVarref.parent)) {
             if (this.currentArrayAccesses.length !== 2) throw new Error(`Found a valid loop, but the number of current array accesses isn't 2 but instead ${this.currentArrayAccesses.length}`);
 
-            this.logLoop("is a valid loop\n");
+            this.log("Loop is valid\n");
             this.validLoops.push({
                 loopAstId: this.currentLoop.astId,
                 accumVarrefAstId: this.currentAccumVarref.astId,
@@ -442,7 +518,7 @@ export class VecMulAccumulationReplacer {
             return true;
         }
 
-        this.logLoop("is not a valid loop since it does not contain a valid accumulator assignment\n");
+        this.log("Loop is not valid since it does not contain a valid accumulator assignment\n");
         this.resetCurrentVariables();
         return false;
     }
@@ -450,13 +526,34 @@ export class VecMulAccumulationReplacer {
     public applyTransformation(validLoopInfo: ValidLoopInfo): void {
         this.log(`Transforming Loop with id ${validLoopInfo.loopAstId}`, "");
 
+        this.cfg = Graph.create()
+            .apply(new ClavaCfgGenerator(Query.root() as Program));
+
         const validLoop: Loop = Query.search(Loop, { astId: validLoopInfo.loopAstId }).getFirst()!;
         const accumVarref: Varref = Query.search(Varref, { astId: validLoopInfo.accumVarrefAstId }).getFirst()!;
         const baseArrayAccessA: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.firstArrayAccessAstId }).getFirst()!;
         const baseArrayAccessB: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.secondArrayAccessAstId }).getFirst()!;
 
-        const arrayA: Expression = getArrayAccessWithoutLastSubscript(baseArrayAccessA);
-        const arrayB: Expression = getArrayAccessWithoutLastSubscript(baseArrayAccessB);
+        const varrefsDeclaredInsideLoopNotControlVarA: Varref[] = Query.searchFrom(baseArrayAccessA, Varref, varref => {
+            return varref.vardecl !== undefined && !isVarrefOf(varref, validLoop.controlVarref.vardecl) && Query.searchFromInclusive(validLoop, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
+        }).get();
+
+        for (const varref of varrefsDeclaredInsideLoopNotControlVarA) {
+            const lastWrites = getLastWrites(this.cfg, varref);
+            varref.replaceWith(lastWrites[0].deepCopy());
+        }
+
+        const varrefsDeclaredInsideLoopNotControlVarB: Varref[] = Query.searchFrom(baseArrayAccessB, Varref, varref => {
+            return varref.vardecl !== undefined && !isVarrefOf(varref, validLoop.controlVarref.vardecl) && Query.searchFromInclusive(validLoop, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
+        }).get();
+
+        for (const varref of varrefsDeclaredInsideLoopNotControlVarB) {
+            const lastWrites = getLastWrites(this.cfg, varref);
+            varref.replaceWith(lastWrites[0].deepCopy());
+        }
+
+        const arrayA: Expression = getArrayAccessWithoutControlVar(baseArrayAccessA, validLoop.controlVarref!.vardecl);
+        const arrayB: Expression = getArrayAccessWithoutControlVar(baseArrayAccessB, validLoop.controlVarref!.vardecl);
 
         if (this.operandBitwidth !== 8) throw new Error("TODO");
         const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `__mac_wrapper_${this.operandBitwidth}b` }).getFirst()!;
@@ -464,10 +561,14 @@ export class VecMulAccumulationReplacer {
         const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref);
         const castPointerToAccum: Cast = ClavaJoinPoints.cStyleCast(ClavaJoinPoints.type("int*"), accumAddrof);
 
-        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, castPointerToAccum, ClavaJoinPoints.exprLiteral(validLoop.endValue));
-        
+        const pointerToAccumDecl: Vardecl = ClavaJoinPoints.varDecl("__accum_ptr", castPointerToAccum);
+        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.varRef(pointerToAccumDecl), ClavaJoinPoints.exprLiteral(validLoop.endValue));
+        const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("assign", accumVarref.deepCopy() as Expression, ClavaJoinPoints.unaryOp("deref", ClavaJoinPoints.varRef(pointerToAccumDecl), "int"));
+
+        validLoop.replaceWith(pointerToAccumDecl);
+        pointerToAccumDecl.insertAfter(callToSubFunction);
+        callToSubFunction.insertAfter(accumAssignment);
         this.log(`Transformed Loop [${validLoop.line}:${validLoop.column}]\n`);
-        validLoop.replaceWith(callToSubFunction);
     }
 
     public applyTransformations(): void {
@@ -503,6 +604,8 @@ export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: 
     for (const loop of Query.search(Loop).get()) {
         vecMulReplacer.analyseLoopValidity(loop);
     }
+
+    if (!silent) console.log("---------------\n");
 
     Clava.popAst();
 
