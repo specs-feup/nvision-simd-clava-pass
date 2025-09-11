@@ -534,24 +534,6 @@ export class VecMulAccumulationReplacer {
         const baseArrayAccessA: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.firstArrayAccessAstId }).getFirst()!;
         const baseArrayAccessB: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.secondArrayAccessAstId }).getFirst()!;
 
-        const varrefsDeclaredInsideLoopNotControlVarA: Varref[] = Query.searchFrom(baseArrayAccessA, Varref, varref => {
-            return varref.vardecl !== undefined && !isVarrefOf(varref, validLoop.controlVarref.vardecl) && Query.searchFromInclusive(validLoop, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
-        }).get();
-
-        for (const varref of varrefsDeclaredInsideLoopNotControlVarA) {
-            const lastWrites = getLastWrites(this.cfg, varref);
-            varref.replaceWith(lastWrites[0].deepCopy());
-        }
-
-        const varrefsDeclaredInsideLoopNotControlVarB: Varref[] = Query.searchFrom(baseArrayAccessB, Varref, varref => {
-            return varref.vardecl !== undefined && !isVarrefOf(varref, validLoop.controlVarref.vardecl) && Query.searchFromInclusive(validLoop, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
-        }).get();
-
-        for (const varref of varrefsDeclaredInsideLoopNotControlVarB) {
-            const lastWrites = getLastWrites(this.cfg, varref);
-            varref.replaceWith(lastWrites[0].deepCopy());
-        }
-
         const arrayA: Expression = getArrayAccessWithoutControlVar(baseArrayAccessA, validLoop.controlVarref!.vardecl);
         const arrayB: Expression = getArrayAccessWithoutControlVar(baseArrayAccessB, validLoop.controlVarref!.vardecl);
 
@@ -590,9 +572,10 @@ function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
 export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: number = 8, silent: boolean = true): void {
     attachNecessaryFunctions(useSoftwareSimInstructions);
 
-    Clava.pushAst();
 
     if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
+
+    Clava.pushAst();
 
     const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
         .apply(new ClavaCfgGenerator(Query.root() as Program));
