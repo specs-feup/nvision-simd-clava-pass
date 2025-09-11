@@ -349,14 +349,14 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        const varrefsDeclaredInsideLoopNotControlVar: Varref[] = Query.searchFrom(arrayAccessValue, Varref, varref => {
-            return varref.vardecl !== undefined && !isVarrefOf(varref, this.currentLoop!.controlVarref.vardecl) && Query.searchFromInclusive(this.currentLoop!, Vardecl, vardecl => vardecl.astId === varref.vardecl.astId).get().length !== 0
-        }).get();
+        const varrefsInsideSubscripts: Varref[] = [];
+        for (const subscript of arrayAccessValue.subscript) {
+            varrefsInsideSubscripts.push(...Query.searchFromInclusive(subscript, Varref, varref => varref.vardecl !== undefined && varref.vardecl.astId !== this.currentLoop?.controlVarref.vardecl.astId).get())
+        }
 
-        for (const varref of varrefsDeclaredInsideLoopNotControlVar) {
-            const lastWrites = getLastWrites(this.cfg, varref);
-            if (!areAllTheSameLiteral(lastWrites)) {
-                this.logJp(arrayAccessValue, `is not a valid array access since its subscripts contain the variable «${varref.code}, declared inside the loop, whose value cannot currently be known at compile time»`);
+        for (const varrefInsideSubscript of varrefsInsideSubscripts) {
+            if (Query.searchFrom(this.currentLoop.body, Vardecl, vardecl => vardecl.astId === varrefInsideSubscript.vardecl.astId).get().length !== 0) {
+                this.logJp(arrayAccessValue, `contains a varref whose value cannot be determined at compile-time and was declared inside the body's loop: «${varrefInsideSubscript.code}»`);
                 return false;
             }
         }
