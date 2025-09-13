@@ -25,7 +25,7 @@ function bitwidthInRv32(type: string): number | undefined {
 }
 
 const SW_MAC_CODE_8: string = `
-signed int __nvision_sim_accum = 0;
+static signed int __nvision_sim_accum = 0;
 
 inline static void __mac_8b(int a, int b, int c, int d) {
   signed char *a_cast = (signed char *)(&a);
@@ -147,9 +147,35 @@ function endValueIsConstant(loop: Loop, silent = true): boolean {
     if (endValue === undefined || endValue === null) return true;
 
     let endValueIsLiteral: boolean = Number.isSafeInteger(parseFloat(endValue));
+    if (endValueIsLiteral) {
+        try {
+            ClavaJoinPoints.integerLiteral(endValue);
+        } catch (e) {
+            endValueIsLiteral = false;
+        }
+    }
 
-    if (!endValueIsLiteral && !silent) console.log(`\tEnd value is «${endValue}», therefore it may not be constant`);
-    return endValueIsLiteral;
+    if (!endValueIsLiteral) {
+        try {
+            const varrefsWithEndValueName: Varref[] = Query.searchFromInclusive(loop, Varref, { name: endValue }).get();
+            if (varrefsWithEndValueName.length === 0) {
+                if (!silent) console.log(`\tloop's endvalue is not a literal, however it is not just a varref either, therefore it is currently impossible to determine if its value is constant: «${endValue}»`);
+                return false;
+            }
+
+            for (const varref of varrefsWithEndValueName) {
+                if (varref.use !== "read") {
+                    if (!silent) console.log(`\tendValue is a variable that is not constant inside the loop: ${varref.parent.code}`);
+                    return false;
+                }
+            }
+        } catch (e) {
+            if (!silent) console.log(`\tUnknown error when trying to process loop end value: ${e}`);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function hasRegularControlFlow(loop: Loop, silent = true): boolean {
@@ -195,16 +221,25 @@ function isInsideOpThatIsNotAdd(jp: Joinpoint): boolean {
     return false;
 }
 
-function getExternalVariableWrites(baseJp: Joinpoint): Varref[] {
+function getExternalVariableOrArrayWrites(baseJp: Joinpoint, except?: Vardecl): (Varref | ArrayAccess)[] {
     const declaredVariablesInLoop: Vardecl[] = Query.searchFrom(baseJp, Vardecl).get();
     const externalVariableModifications: Varref[] = Query.searchFrom(baseJp, Varref, varref => {
         if (!(varref.use === "write" || varref.use === "readwrite")) return false;
 
         if (varref.vardecl === undefined || varref.vardecl === null) return false;
+        if (except !== undefined && varref.vardecl.astId === except.astId) return false;
         return declaredVariablesInLoop.filter(vardecl => vardecl.astId === varref.vardecl.astId).length === 0;
     }).get();
 
-    return externalVariableModifications;
+    const externalArrayModifications: ArrayAccess[] = Query.searchFrom(baseJp, ArrayAccess, arrAccess => {
+        if (!(arrAccess.use === "write" || arrAccess.use === "readwrite")) return false;
+
+        if (arrAccess.vardecl === undefined || arrAccess.vardecl === null) return false;
+        if (except !== undefined && arrAccess.vardecl.astId === except.astId) return false;
+        return declaredVariablesInLoop.filter(vardecl => vardecl.astId === arrAccess.vardecl.astId).length === 0;
+    }).get();
+
+    return [...externalVariableModifications, ...externalArrayModifications];
 }
 
 function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess) {
@@ -212,8 +247,10 @@ function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess) {
     const subscriptsCopy: Expression[] = [...arrAccess.subscript];
     subscriptsCopy.pop();
 
-    const newArrayAccess: ArrayAccess = ClavaJoinPoints.arrayAccess(arrAccess.arrayVar, ...subscriptsCopy);
-    return newArrayAccess;
+    console.log(`arrAccess.arrayVar: ${arrAccess.arrayVar.code}`);
+    console.log(`arrAccess.arrayVar.type: ${arrAccess.arrayVar.type.desugarAll.code}`);
+    // const newArrayAccess: ArrayAccess = ClavaJoinPoints.arrayAccess(arrAccess.arrayVar, ...subscriptsCopy);
+    return ClavaJoinPoints.exprLiteral(`${arrAccess.arrayVar.vardecl.name}${subscriptsCopy.map(e => "[" + e.code + "]").join("")}`) as ArrayAccess;
 }
 
 function getArrayAccessWithoutControlVar(arrAccess: ArrayAccess, controlVar: Vardecl): Expression {
@@ -250,7 +287,7 @@ type ValidLoopInfo = {
 }
 export class VecMulAccumulationReplacer {
     private currentLoop: Loop | undefined;
-    private currentAccumVarref: Varref | undefined;
+    private currentAccumVarref: Varref | ArrayAccess | undefined;
     private currentArrayAccesses: ArrayAccess[];
     private validLoops: ValidLoopInfo[];
     private operandBitwidth: number;
@@ -401,9 +438,9 @@ export class VecMulAccumulationReplacer {
         }
 
         if (
-            isVarrefOf(increaseValue.left, this.currentAccumVarref!.vardecl) && this.isValidVectorMultiplication(increaseValue.right)
+            (increaseValue.left.code === this.currentAccumVarref!.code) && this.isValidVectorMultiplication(increaseValue.right)
             ||
-            isVarrefOf(increaseValue.right, this.currentAccumVarref!.vardecl) && this.isValidVectorMultiplication(increaseValue.left)
+            (increaseValue.right.code === this.currentAccumVarref!.code) && this.isValidVectorMultiplication(increaseValue.left)
         ) {
             // this.logJpAndValue(jp, increaseValue, "constitutes a valid accumulator increase (it's a sum of the accumulator and the vector multiplication)");
             return true;
@@ -475,7 +512,7 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        const externalVariableModifications: Varref[] = getExternalVariableWrites(loop);
+        const externalVariableModifications: (Varref | ArrayAccess)[] = getExternalVariableOrArrayWrites(loop, loop.controlVarref.vardecl);
 
         const calls: Call[] = Query.searchFrom(loop, Call).get();
 
@@ -494,19 +531,49 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        const accumVarref: Varref = externalVariableModifications[0];
-        this.currentAccumVarref = accumVarref;
+        const accumWrite: Varref | ArrayAccess = externalVariableModifications[0];
+        this.currentAccumVarref = accumWrite;
 
-        if (bitwidthInRv32(accumVarref.type.desugarAll.code) !== 32) {
-            this.logJp(accumVarref, "is not a valid accumulator since its bitwidth is not 32 in RV32");
+        if (this.currentAccumVarref instanceof ArrayAccess) {
+            const varsReferencedInSubscript: Vardecl[] = [];
+            for (const subscript of this.currentAccumVarref.subscript) {
+                varsReferencedInSubscript.push(...Query.searchFromInclusive(subscript, Varref, varref => varref.vardecl !== undefined).get().map(varref => varref.vardecl));
+            }
+
+            for (const varReferencedInSubscript of varsReferencedInSubscript) {
+                if (varReferencedInSubscript.astId === this.currentLoop.controlVarref.vardecl.astId) {
+                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop (loop's control var): ${varReferencedInSubscript.name}»`);
+                    return false;
+
+                }
+
+                if (Query.searchFromInclusive(this.currentLoop, Vardecl, vardecl => vardecl.astId === varReferencedInSubscript.astId).get().length !== 0) {
+                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop: ${varReferencedInSubscript.name}»`);
+                    return false;
+                }
+            }
+        }
+
+        const bitWidthInRv32: number | undefined = bitwidthInRv32(accumWrite.type.desugarAll.code);
+
+        if (bitWidthInRv32 === undefined) {
+            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth in rv32 is unknown (type must be char, short, int, long or long long but is «${accumWrite.type.desugarAll.code}»)`);
+            console.log(loop.code);
+            return false;
+        }
+
+        if (bitWidthInRv32 > 32) {
+            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth is larger than 32 in RV32 (${accumWrite.type.desugarAll.code})`);
+            console.log(loop.code);
             return false;
         }
 
         // the accumulation should be equivalent to accum += A[...] * B[...]
-        if (this.isValidAccumulatorAssignment(accumVarref.parent)) {
+        if (this.isValidAccumulatorAssignment(accumWrite.parent)) {
             if (this.currentArrayAccesses.length !== 2) throw new Error(`Found a valid loop, but the number of current array accesses isn't 2 but instead ${this.currentArrayAccesses.length}`);
 
             this.log("Loop is valid\n");
+            console.log(this.currentLoop.code);
             this.validLoops.push({
                 loopAstId: this.currentLoop.astId,
                 accumVarrefAstId: this.currentAccumVarref.astId,
@@ -530,7 +597,7 @@ export class VecMulAccumulationReplacer {
             .apply(new ClavaCfgGenerator(Query.root() as Program));
 
         const validLoop: Loop = Query.search(Loop, { astId: validLoopInfo.loopAstId }).getFirst()!;
-        const accumVarref: Varref = Query.search(Varref, { astId: validLoopInfo.accumVarrefAstId }).getFirst()!;
+        const accumWrite: Expression = Query.search(Expression, { astId: validLoopInfo.accumVarrefAstId }).getFirst()!;
         const baseArrayAccessA: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.firstArrayAccessAstId }).getFirst()!;
         const baseArrayAccessB: ArrayAccess = Query.search(ArrayAccess, { astId: validLoopInfo.secondArrayAccessAstId }).getFirst()!;
 
@@ -540,14 +607,16 @@ export class VecMulAccumulationReplacer {
         if (this.operandBitwidth !== 8) throw new Error("TODO");
         const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `__mac_wrapper_${this.operandBitwidth}b` }).getFirst()!;
 
-        const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", accumVarref.copy() as Varref);
+        const newAccumVar = ClavaJoinPoints.varDecl("__accum_var", ClavaJoinPoints.integerLiteral(0));
+        const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", ClavaJoinPoints.varRef(newAccumVar));
         const castPointerToAccum: Cast = ClavaJoinPoints.cStyleCast(ClavaJoinPoints.type("int*"), accumAddrof);
 
         const pointerToAccumDecl: Vardecl = ClavaJoinPoints.varDecl("__accum_ptr", castPointerToAccum);
         const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.varRef(pointerToAccumDecl), ClavaJoinPoints.exprLiteral(validLoop.endValue));
-        const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("assign", accumVarref.deepCopy() as Expression, ClavaJoinPoints.unaryOp("deref", ClavaJoinPoints.varRef(pointerToAccumDecl), "int"));
+        const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("add_assign", accumWrite.deepCopy() as Expression, ClavaJoinPoints.unaryOp("deref", ClavaJoinPoints.varRef(pointerToAccumDecl), "int"));
 
-        validLoop.replaceWith(pointerToAccumDecl);
+        validLoop.replaceWith(newAccumVar);
+        newAccumVar.insertAfter(pointerToAccumDecl);
         pointerToAccumDecl.insertAfter(callToSubFunction);
         callToSubFunction.insertAfter(accumAssignment);
         this.log(`Transformed Loop [${validLoop.line}:${validLoop.column}]\n`);
@@ -565,7 +634,11 @@ export class VecMulAccumulationReplacer {
 }
 
 function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
-    Clava.getProgram().files[0].insert("before", WRAPPER_FUNCTION_CODE_8);
+    for (const file of Clava.getProgram().files) {
+        if (!file.isHeader) {
+            file.insert("before", WRAPPER_FUNCTION_CODE_8);
+        }
+    }
     Clava.rebuild();
 }
 
@@ -593,7 +666,12 @@ export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: 
     Clava.popAst();
 
     vecMulReplacer.applyTransformations();
-    Clava.getProgram().files[0].insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_8 : HW_MAC_CODE_8);
+
+    for (const file of Clava.getProgram().files) {
+        if (!file.isHeader) {
+            file.insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_8 : HW_MAC_CODE_8);
+        }
+    }
 
     if (!silent) {
         console.log(`Applied transformations to ${vecMulReplacer.getValidLoopNumber()} loops`);
