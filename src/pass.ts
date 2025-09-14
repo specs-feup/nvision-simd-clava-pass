@@ -11,6 +11,7 @@ import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormat
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { valueIs } from "./cfg/valueIs.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
+import { generateRandomString } from "./utils/randomString.js";
 import { getLastWrites } from "./cfg/writes.js";
 import { areAllTheSameLiteral } from "./constprop/constprop.js";
 
@@ -542,13 +543,15 @@ export class VecMulAccumulationReplacer {
 
             for (const varReferencedInSubscript of varsReferencedInSubscript) {
                 if (varReferencedInSubscript.astId === this.currentLoop.controlVarref.vardecl.astId) {
-                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop (loop's control var): ${varReferencedInSubscript.name}»`);
+                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop (loop's control var): ${varReferencedInSubscript.name}»\n`);
+                    this.resetCurrentVariables();
                     return false;
 
                 }
 
                 if (Query.searchFromInclusive(this.currentLoop, Vardecl, vardecl => vardecl.astId === varReferencedInSubscript.astId).get().length !== 0) {
-                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop: ${varReferencedInSubscript.name}»`);
+                    this.logJp(this.currentAccumVarref, `left value is the accumulator and an ArrayAccess, however it contains a variable that is not constant inside the loop: ${varReferencedInSubscript.name}»\n`);
+                    this.resetCurrentVariables();
                     return false;
                 }
             }
@@ -557,23 +560,22 @@ export class VecMulAccumulationReplacer {
         const bitWidthInRv32: number | undefined = bitwidthInRv32(accumWrite.type.desugarAll.code);
 
         if (bitWidthInRv32 === undefined) {
-            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth in rv32 is unknown (type must be char, short, int, long or long long but is «${accumWrite.type.desugarAll.code}»)`);
-            console.log(loop.code);
+            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth in rv32 is unknown (type must be char, short, int, long or long long but is «${accumWrite.type.desugarAll.code}»)\n`);
+            this.resetCurrentVariables();
             return false;
         }
 
         if (bitWidthInRv32 > 32) {
-            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth is larger than 32 in RV32 (${accumWrite.type.desugarAll.code})`);
-            console.log(loop.code);
+            this.logJp(accumWrite, `is not a valid accumulator since its bitwidth is larger than 32 in RV32 (${accumWrite.type.desugarAll.code})\n`);
+            this.resetCurrentVariables();
             return false;
         }
 
         // the accumulation should be equivalent to accum += A[...] * B[...]
         if (this.isValidAccumulatorAssignment(accumWrite.parent)) {
-            if (this.currentArrayAccesses.length !== 2) throw new Error(`Found a valid loop, but the number of current array accesses isn't 2 but instead ${this.currentArrayAccesses.length}`);
+            if (this.currentArrayAccesses.length !== 2) throw new Error(`Found a valid loop, but the number of current array accesses isn't 2 but instead ${this.currentArrayAccesses.length}\n`);
 
             this.log("Loop is valid\n");
-            console.log(this.currentLoop.code);
             this.validLoops.push({
                 loopAstId: this.currentLoop.astId,
                 accumVarrefAstId: this.currentAccumVarref.astId,
@@ -607,11 +609,12 @@ export class VecMulAccumulationReplacer {
         if (this.operandBitwidth !== 8) throw new Error("TODO");
         const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `__mac_wrapper_${this.operandBitwidth}b` }).getFirst()!;
 
-        const newAccumVar = ClavaJoinPoints.varDecl("__accum_var", ClavaJoinPoints.integerLiteral(0));
+        const uid: string = generateRandomString(8);
+        const newAccumVar = ClavaJoinPoints.varDecl(`__accum_var_${uid}`, ClavaJoinPoints.integerLiteral(0));
         const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", ClavaJoinPoints.varRef(newAccumVar));
         const castPointerToAccum: Cast = ClavaJoinPoints.cStyleCast(ClavaJoinPoints.type("int*"), accumAddrof);
 
-        const pointerToAccumDecl: Vardecl = ClavaJoinPoints.varDecl("__accum_ptr", castPointerToAccum);
+        const pointerToAccumDecl: Vardecl = ClavaJoinPoints.varDecl(`__accum_ptr_${uid}`, castPointerToAccum);
         const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.varRef(pointerToAccumDecl), ClavaJoinPoints.exprLiteral(validLoop.endValue));
         const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("add_assign", accumWrite.deepCopy() as Expression, ClavaJoinPoints.unaryOp("deref", ClavaJoinPoints.varRef(pointerToAccumDecl), "int"));
 
@@ -642,13 +645,14 @@ function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
     Clava.rebuild();
 }
 
-export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: number = 8, silent: boolean = true): void {
+export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: number = 8, silent: boolean = true): number {
     attachNecessaryFunctions(useSoftwareSimInstructions);
 
 
     if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
 
     Clava.pushAst();
+
 
     const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
         .apply(new ClavaCfgGenerator(Query.root() as Program));
@@ -676,4 +680,5 @@ export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: 
     if (!silent) {
         console.log(`Applied transformations to ${vecMulReplacer.getValidLoopNumber()} loops`);
     }
+    return vecMulReplacer.getValidLoopNumber();
 }
