@@ -22,7 +22,7 @@ for (let i = 0; i < 10; i++) {
             break;
         }
         const ini = performance.now();
-        const numTransformations = applyPass(false, 8, true);
+        const numTransformations = applyPass(false, true);
         const final = performance.now();
         const entryInMap = map.get(res.appSummary.canonicalName);
         const entry: entry = entryInMap !== undefined ? entryInMap : { durations: [], numTransformations: numTransformations };

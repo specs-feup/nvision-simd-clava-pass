@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 void foo(int8_t vector[8], int8_t matrix_col[8]) {
   int32_t result = 0;
@@ -64,4 +65,64 @@ void foobar(int8_t matrix[24], int8_t vector[8], int8_t out_vec[8]) {
   }
 
   /* ... */
+}
+
+void test_16b(short vector[8], short matrix_col[8]) {
+  int result = 0;
+
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+void test_32b(int vector[8], int matrix_col[8]) {
+  int result = 0;
+
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+void test_mismatch_8_16(signed char vector[8], short matrix_col[8]) {
+  int result = 0;
+  
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+void test_mismatch_8_32(signed char vector[8], int matrix_col[8]) {
+  int result = 0;
+  
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+void test_mismatch_16_32(short vector[8], int matrix_col[8]) {
+  int result = 0;
+  
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+void test_mismatch_32_8(int vector[8], signed char matrix_col[8]) {
+  int result = 0;
+  
+  for (size_t i = 0; i < 8; i++) {
+    result += vector[i] * matrix_col[i];
+  }
+}
+
+int main() {
+  int vector_A[8] = {0, 1, 2, 3, 4, 19, 6, 300};
+  int vector_B[8] = {1, 3, 1, 5, 3, 5, 2, 59};
+
+  int accum = 0;
+  for (int i = 0; i < 8; i++) {
+    accum += vector_A[i] * vector_B[i];
+  }
+
+  printf("result: %d\n", accum);
 }

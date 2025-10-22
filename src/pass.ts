@@ -14,6 +14,11 @@ import Clava from "@specs-feup/clava/api/clava/Clava.js";
 import { generateRandomString } from "./utils/randomString.js";
 import { getLastWrites } from "./cfg/writes.js";
 import { areAllTheSameLiteral } from "./constprop/constprop.js";
+// import { FW_DECL_CODE_4, SW_MAC_CODE_4, HW_MAC_CODE_4, DOT_PROD_CODE_4 } from "./insertedcode/4bit.js";
+import { FW_DECL_CODE_8, SW_MAC_CODE_8, HW_MAC_CODE_8, DOT_PROD_CODE_8 } from "./insertedcode/8bit.js";
+import { FW_DECL_CODE_16, SW_MAC_CODE_16, HW_MAC_CODE_16, DOT_PROD_CODE_16 } from "./insertedcode/16bit.js";
+import { FW_DECL_CODE_32, SW_MAC_CODE_32, HW_MAC_CODE_32, DOT_PROD_CODE_32 } from "./insertedcode/32bit.js";
+import { FW_DECL_READ_CLEAR, SW_READ_CLEAR_CODE, HW_READ_CLEAR_CODE } from "./insertedcode/readclear.js";
 
 function bitwidthInRv32(type: string): number | undefined {
     if (type.includes("char")) return 8;
@@ -24,96 +29,6 @@ function bitwidthInRv32(type: string): number | undefined {
 
     return undefined;
 }
-
-const SW_MAC_CODE_8: string = `
-static signed int __nvision_sim_accum = 0;
-
-inline static void __mac_8b(int a, int b, int c, int d) {
-  signed char *a_cast = (signed char *)(&a);
-  signed char *b_cast = (signed char *)(&b);
-  signed char *c_cast = (signed char *)(&c);
-  signed char *d_cast = (signed char *)(&d);
-
-  __nvision_sim_accum += a_cast[0] * b_cast[0];
-  __nvision_sim_accum += a_cast[1] * b_cast[1];
-  __nvision_sim_accum += a_cast[2] * b_cast[2];
-  __nvision_sim_accum += a_cast[3] * b_cast[3];
-
-  __nvision_sim_accum += c_cast[0] * d_cast[0];
-  __nvision_sim_accum += c_cast[1] * d_cast[1];
-  __nvision_sim_accum += c_cast[2] * d_cast[2];
-  __nvision_sim_accum += c_cast[3] * d_cast[3];
-}
-
-inline static int __read_clear() {
-  int temp = __nvision_sim_accum;
-  __nvision_sim_accum = 0;
-
-  return temp;
-}
-
-inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
-                           size_t length) {
-  int mac_len = length / 8;
-  int *A_cast = (int *)A;
-  int *B_cast = (int *)B;
-
-  for (int i = 0; i < mac_len; i++) {
-    __mac_8b(A_cast[i * 2], B_cast[i * 2], A_cast[i * 2 + 1],
-               B_cast[i * 2 + 1]);
-  }
-
-  *accum += __read_clear();
-
-  for (int i = (length / 8) * 8; i < length; i++) {
-    *accum += A[i] * B[i];
-  }
-}
-`
-
-const HW_MAC_CODE_8: string = `
-inline static void __mac_8b(int a, int b, int c, int d) {
-  asm volatile(".insn r 0b0001011, 0x02, 0x0, x0, %[RS1], %[RS2]\\n"
-               ".insn r 0b0001011, 0x02, 0x0, x0, %[RS3], %[RS4]"
-               :
-               : [RS1] "r"(a), [RS2] "r"(b), [RS3] "r"(c), [RS4] "r"(d));
-}
-
-inline static int __read_clear() {
-  int result = 0;
-  asm volatile(".insn r 0b0001011, 0x07, 0x0, %[RD], x0, x0"
-               : [RD] "=r"(result));
-  return result;
-}
-
-inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
-                           size_t length) {
-  int mac_len = length / 8;
-  int *A_cast = (int *)A;
-  int *B_cast = (int *)B;
-
-  for (int i = 0; i < mac_len; i++) {
-    __mac_8b(A_cast[i * 2], B_cast[i * 2], A_cast[i * 2 + 1],
-               B_cast[i * 2 + 1]);
-  }
-
-  *accum += __read_clear();
-
-  for (int i = (length / 8) * 8; i < length; i++) {
-    *accum += A[i] * B[i];
-  }
-}
-`
-
-const WRAPPER_FUNCTION_CODE_8: string = `
-#include <stddef.h>
-
-inline static void __mac_8b(int a, int b, int c, int d);
-inline static int __read_clear();
-
-inline static void __mac_wrapper_8b(signed char *A, signed char *B, volatile int *accum,
-                           size_t length);
-`
 
 function altersControlFlow(stmt: Statement) {
     return stmt instanceof ReturnStmt || stmt instanceof GotoStmt || stmt instanceof Break || stmt instanceof Continue;
@@ -248,8 +163,8 @@ function getArrayAccessWithoutLastSubscript(arrAccess: ArrayAccess) {
     const subscriptsCopy: Expression[] = [...arrAccess.subscript];
     subscriptsCopy.pop();
 
-    console.log(`arrAccess.arrayVar: ${arrAccess.arrayVar.code}`);
-    console.log(`arrAccess.arrayVar.type: ${arrAccess.arrayVar.type.desugarAll.code}`);
+    // console.log(`arrAccess.arrayVar: ${arrAccess.arrayVar.code}`);
+    // console.log(`arrAccess.arrayVar.type: ${arrAccess.arrayVar.type.desugarAll.code}`);
     // const newArrayAccess: ArrayAccess = ClavaJoinPoints.arrayAccess(arrAccess.arrayVar, ...subscriptsCopy);
     return ClavaJoinPoints.exprLiteral(`${arrAccess.arrayVar.vardecl.name}${subscriptsCopy.map(e => "[" + e.code + "]").join("")}`) as ArrayAccess;
 }
@@ -280,25 +195,39 @@ function logWithCodeAndPos(jp: Joinpoint, message: string, prefix: string = "") 
     console.log(`${prefix}«${jp.code}» [${jp.line}:${jp.column}] ${message}`);
 }
 
+enum MacBitWidth {
+    FOUR_BIT = "4b",
+    EIGHT_BIT = "8b",
+    SIXTEEN_BIT = "16b",
+    THIRTYTWO_BIT = "32b",
+};
+
 type ValidLoopInfo = {
     loopAstId: string,
     accumVarrefAstId: string,
     firstArrayAccessAstId: string,
     secondArrayAccessAstId: string,
+    macBitWidth: MacBitWidth,
 }
 export class VecMulAccumulationReplacer {
     private currentLoop: Loop | undefined;
     private currentAccumVarref: Varref | ArrayAccess | undefined;
     private currentArrayAccesses: ArrayAccess[];
+    private currentMacBitWidthLeft: MacBitWidth | undefined;
+    private currentMacBitWidthRight: MacBitWidth | undefined;
+    private _transformations: number = 0;
+    
+    public get transformations(): number {
+        return this._transformations;
+    }
+    
     private validLoops: ValidLoopInfo[];
-    private operandBitwidth: number;
     private silent: boolean;
     private cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
 
-    public constructor(operandBitSize: number, silent: boolean = true, cfg?: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>) {
+    public constructor(silent: boolean = true, cfg?: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>) {
         this.currentArrayAccesses = [];
         this.validLoops = [];
-        this.operandBitwidth = operandBitSize;
         this.silent = silent;
         this.cfg = cfg ?? Graph.create()
             .apply(new ClavaCfgGenerator(Query.root() as Program));
@@ -307,6 +236,8 @@ export class VecMulAccumulationReplacer {
     private resetCurrentVariables() {
         this.currentLoop = undefined;
         this.currentAccumVarref = undefined;
+        this.currentMacBitWidthLeft = undefined;
+        this.currentMacBitWidthRight = undefined;
         this.currentArrayAccesses = [];
     }
 
@@ -335,7 +266,7 @@ export class VecMulAccumulationReplacer {
         console.log(prefix + message);
     }
 
-    private isValidArrayAccess(jp: Joinpoint): boolean {
+    private isValidArrayAccess(jp: Joinpoint, left: boolean): boolean {
         const arrayAccessValue: ArrayAccess | undefined = valueIs(jp, ArrayAccess, this.cfg);
         if (arrayAccessValue === undefined) {
             this.logJp(jp, "is not an array access, therefore is not a valid array access");
@@ -344,14 +275,28 @@ export class VecMulAccumulationReplacer {
 
         const arrayTypeSizeInBitsInRiscv32: number | undefined = bitwidthInRv32(arrayAccessValue.type.desugarAll.code);
         if (arrayTypeSizeInBitsInRiscv32 === undefined) {
-            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors. The elements of an array should be of one of the following types: [char, short, int, long] and have bit size «${this.operandBitwidth}» in rv32`);
+            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors. The elements of an array should be of one of the following types: [char, short, int, long]`);
             return false;
         }
 
-        if (arrayTypeSizeInBitsInRiscv32 !== this.operandBitwidth) {
-            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors, since its bit size is «${arrayTypeSizeInBitsInRiscv32}» in rv32, and the hardware instructions expect operands with a bit width of «${this.operandBitwidth}»`);
+        if (arrayTypeSizeInBitsInRiscv32 === 64) {
+            this.logJpAndValue(jp, arrayAccessValue, `of type «${arrayAccessValue.type.code}»${arrayAccessValue.type.code !== arrayAccessValue.type.desugarAll.code ? ` (${arrayAccessValue.type.desugarAll.code})` : ''} is not of a valid type for the elements of one of the vectors, since its bit size is «${arrayTypeSizeInBitsInRiscv32}» in rv32, and the hardware instructions expect operands with a bit width of 4, 8, 16 or 32`);
             return false;
         }
+
+        let macBitWidth: MacBitWidth | undefined;
+        if (arrayTypeSizeInBitsInRiscv32 === 4) macBitWidth = MacBitWidth.FOUR_BIT;
+        else if (arrayTypeSizeInBitsInRiscv32 === 8) macBitWidth = MacBitWidth.EIGHT_BIT;
+        else if (arrayTypeSizeInBitsInRiscv32 === 16) macBitWidth = MacBitWidth.SIXTEEN_BIT;
+        else if (arrayTypeSizeInBitsInRiscv32 === 32) macBitWidth = MacBitWidth.THIRTYTWO_BIT;
+        else {
+            this.logJp(arrayAccessValue, `has an unsupported bitwidth in rv32: «${arrayTypeSizeInBitsInRiscv32}», should be 4, 8, 16 or 32`);
+
+            return false;
+        }
+
+        if (left) this.currentMacBitWidthLeft = macBitWidth;
+        else this.currentMacBitWidthRight = macBitWidth;
 
         if (this.currentLoop?.controlVarref?.vardecl === undefined) {
             this.logLoop(`does not have a control variable. This should have been caught in earlier checks`);
@@ -416,10 +361,17 @@ export class VecMulAccumulationReplacer {
             return false;
         }
 
-        if (!(this.isValidArrayAccess(multiplicationValue.left) && this.isValidArrayAccess(multiplicationValue.right))) {
+        if (!(this.isValidArrayAccess(multiplicationValue.left, true) && this.isValidArrayAccess(multiplicationValue.right, false))) {
             this.logJpAndValue(jp, multiplicationValue, "is not a valid vector multiplication since its operands are not valid array accesses");
 
             return false;
+        }
+
+        if (this.currentMacBitWidthLeft !== this.currentMacBitWidthRight) {
+            this.logJpAndValue(jp, multiplicationValue, `is not a valid vector multiplication since its operands have different bit widths in rv32: left is «${this.currentMacBitWidthLeft}» and right is «${this.currentMacBitWidthRight}»`);
+
+            return false;
+
         }
 
         return true;
@@ -488,10 +440,6 @@ export class VecMulAccumulationReplacer {
     public analyseLoopValidity(loop: Loop): boolean {
         this.currentLoop = loop;
         this.log(`Analysing Loop [${loop.line}:${loop.column}]`, "");
-
-        if (this.operandBitwidth !== 8) {
-            throw new Error(`Tried to use unsupported bitwidth: ${this.operandBitwidth}`);
-        }
 
         if (loop.kind !== "for") {
             this.log("Loop is invalid since it is not a for loop\n");
@@ -580,7 +528,8 @@ export class VecMulAccumulationReplacer {
                 loopAstId: this.currentLoop.astId,
                 accumVarrefAstId: this.currentAccumVarref.astId,
                 firstArrayAccessAstId: this.currentArrayAccesses[0].astId,
-                secondArrayAccessAstId: this.currentArrayAccesses[1].astId
+                secondArrayAccessAstId: this.currentArrayAccesses[1].astId,
+                macBitWidth: this.currentMacBitWidthLeft!
             });
 
             this.resetCurrentVariables();
@@ -590,6 +539,15 @@ export class VecMulAccumulationReplacer {
         this.log("Loop is not valid since it does not contain a valid accumulator assignment\n");
         this.resetCurrentVariables();
         return false;
+    }
+
+    private getSubstituteFunction(macBitWidth: MacBitWidth): FunctionJp | undefined {
+        switch(macBitWidth) {
+            case MacBitWidth.FOUR_BIT: return Query.search(FunctionJp, { name: `__dot_prod_4b` }).getFirst();
+            case MacBitWidth.EIGHT_BIT: return Query.search(FunctionJp, { name: `__dot_prod_8b` }).getFirst();
+            case MacBitWidth.SIXTEEN_BIT: return Query.search(FunctionJp, { name: `__dot_prod_16b` }).getFirst();
+            case MacBitWidth.THIRTYTWO_BIT: return Query.search(FunctionJp, { name: `__dot_prod_32b` }).getFirst();
+        }
     }
 
     public applyTransformation(validLoopInfo: ValidLoopInfo): void {
@@ -606,8 +564,13 @@ export class VecMulAccumulationReplacer {
         const arrayA: Expression = getArrayAccessWithoutControlVar(baseArrayAccessA, validLoop.controlVarref!.vardecl);
         const arrayB: Expression = getArrayAccessWithoutControlVar(baseArrayAccessB, validLoop.controlVarref!.vardecl);
 
-        if (this.operandBitwidth !== 8) throw new Error("TODO");
-        const substituteFunction: FunctionJp = Query.search(FunctionJp, { name: `__mac_wrapper_${this.operandBitwidth}b` }).getFirst()!;
+        const substituteFunction: FunctionJp | undefined = this.getSubstituteFunction(validLoopInfo.macBitWidth);
+
+        if (substituteFunction === undefined) {
+            this.log(`Failed transforming loop: substitute function not found`);
+
+            return;
+        }
 
         const uid: string = generateRandomString(8);
         const newAccumVar = ClavaJoinPoints.varDecl(`__accum_var_${uid}`, ClavaJoinPoints.integerLiteral(0));
@@ -622,7 +585,9 @@ export class VecMulAccumulationReplacer {
         newAccumVar.insertAfter(pointerToAccumDecl);
         pointerToAccumDecl.insertAfter(callToSubFunction);
         callToSubFunction.insertAfter(accumAssignment);
+
         this.log(`Transformed Loop [${validLoop.line}:${validLoop.column}]\n`);
+        this._transformations++;
     }
 
     public applyTransformations(): void {
@@ -639,15 +604,17 @@ export class VecMulAccumulationReplacer {
 function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
     for (const file of Clava.getProgram().files) {
         if (!file.isHeader) {
-            file.insert("before", WRAPPER_FUNCTION_CODE_8);
+            file.insert("before", FW_DECL_CODE_8);
+            file.insert("before", FW_DECL_CODE_16);
+            file.insert("before", FW_DECL_CODE_32);
+            file.insert("before", FW_DECL_READ_CLEAR);
         }
     }
     Clava.rebuild();
 }
 
-export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: number = 8, silent: boolean = true): number {
+export function applyPass(useSoftwareSimInstructions: boolean, silent: boolean = true): number {
     attachNecessaryFunctions(useSoftwareSimInstructions);
-
 
     if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
 
@@ -659,7 +626,7 @@ export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: 
 
     const formatter = new ClavaFlowDotFormatter();
     cfg.toFile(formatter, "dist/graph.dot");
-    const vecMulReplacer: VecMulAccumulationReplacer = new VecMulAccumulationReplacer(operandBitwidth, silent, cfg);
+    const vecMulReplacer: VecMulAccumulationReplacer = new VecMulAccumulationReplacer(silent, cfg);
 
     for (const loop of Query.search(Loop).get()) {
         vecMulReplacer.analyseLoopValidity(loop);
@@ -674,11 +641,17 @@ export function applyPass(useSoftwareSimInstructions: boolean, operandBitwidth: 
     for (const file of Clava.getProgram().files) {
         if (!file.isHeader) {
             file.insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_8 : HW_MAC_CODE_8);
+            file.insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_16 : HW_MAC_CODE_16);
+            file.insert("after", useSoftwareSimInstructions ? SW_MAC_CODE_32 : HW_MAC_CODE_32);
+            file.insert("after", useSoftwareSimInstructions ? SW_READ_CLEAR_CODE : HW_READ_CLEAR_CODE);
+            file.insert("after", DOT_PROD_CODE_8);
+            file.insert("after", DOT_PROD_CODE_16);
+            file.insert("after", DOT_PROD_CODE_32);
         }
     }
 
     if (!silent) {
-        console.log(`Applied transformations to ${vecMulReplacer.getValidLoopNumber()} loops`);
+        console.log(`Applied transformations to ${vecMulReplacer.transformations} loops`);
     }
     return vecMulReplacer.getValidLoopNumber();
 }
