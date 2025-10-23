@@ -2,8 +2,7 @@ export const FW_DECL_CODE_16: string = `
 #include <stddef.h>
 
 inline static void __mac_16b(int a, int b, int c, int d);
-inline static void __dot_prod_16b(short *A, short *B, volatile int *accum,
-                           size_t length);
+inline static int __dot_prod_16b(short *A, short *B, size_t length);
 `;
 
 export const SW_MAC_CODE_16: string = `
@@ -31,9 +30,9 @@ inline static void __mac_16b(int a, int b, int c, int d) {
 `;
 
 export const DOT_PROD_CODE_16: string = `
-inline static void __dot_prod_16b(short *A, short *B, volatile int *accum,
-                           size_t length) {
+inline static int __dot_prod_16b(short *A, short *B, size_t length) {
   int mac_len = length / 4;
+  int accum = 0;
   int *A_cast = (int *)A;
   int *B_cast = (int *)B;
 
@@ -42,10 +41,12 @@ inline static void __dot_prod_16b(short *A, short *B, volatile int *accum,
                B_cast[i * 2 + 1]);
   }
 
-  *accum += __read_clear();
+  accum += __read_clear();
 
   for (int i = (length / 4) * 4; i < length; i++) {
-    *accum += A[i] * B[i];
+    accum += A[i] * B[i];
   }
+  
+  return accum;
 }
 `;
