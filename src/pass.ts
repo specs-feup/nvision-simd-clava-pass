@@ -572,19 +572,10 @@ export class VecMulAccumulationReplacer {
             return;
         }
 
-        const uid: string = generateRandomString(8);
-        const newAccumVar = ClavaJoinPoints.varDecl(`__accum_var_${uid}`, ClavaJoinPoints.integerLiteral(0));
-        const accumAddrof = ClavaJoinPoints.unaryOp("addr_of", ClavaJoinPoints.varRef(newAccumVar));
-        const castPointerToAccum: Cast = ClavaJoinPoints.cStyleCast(ClavaJoinPoints.type("int*"), accumAddrof);
+        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.exprLiteral(validLoop.endValue));
+        const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("add_assign", accumWrite.deepCopy() as Expression, callToSubFunction);
 
-        const pointerToAccumDecl: Vardecl = ClavaJoinPoints.varDecl(`__accum_ptr_${uid}`, castPointerToAccum);
-        const callToSubFunction: Call = ClavaJoinPoints.call(substituteFunction, arrayA, arrayB, ClavaJoinPoints.varRef(pointerToAccumDecl), ClavaJoinPoints.exprLiteral(validLoop.endValue));
-        const accumAssignment: BinaryOp = ClavaJoinPoints.binaryOp("add_assign", accumWrite.deepCopy() as Expression, ClavaJoinPoints.unaryOp("deref", ClavaJoinPoints.varRef(pointerToAccumDecl), "int"));
-
-        validLoop.replaceWith(newAccumVar);
-        newAccumVar.insertAfter(pointerToAccumDecl);
-        pointerToAccumDecl.insertAfter(callToSubFunction);
-        callToSubFunction.insertAfter(accumAssignment);
+        validLoop.replaceWith(accumAssignment);
 
         this.log(`Transformed Loop [${validLoop.line}:${validLoop.column}]\n`);
         this._transformations++;
