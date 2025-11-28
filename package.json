@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "main": "dist/js/index.js",
   "bin": {
-    "simd-pass": "./dist/js/index.js"
+    "simd-pass": "./experiment"
   },
   "files": [
     "src",
@@ -33,11 +33,13 @@
     "forloop": "npx clava classic dist/js/index.js -j -p src/input/forloop.c -o dist/",
     "reduced": "npx clava classic dist/js/index.js -j -p src/input/reduced.c -o dist/",
     "onnxtoc": "npx clava classic dist/js/index.js -j -p src/input/ad01_int8.c -o dist/",
+    "nvision": "npx clava classic dist/js/index.js -j -p src/input/nvision.c -o dist/",
     "benchmarks": "npx clava classic dist/js/benchmarks.js -j",
     "compileforloop": "gcc -o dist/forloop src/input/forloop.c && gcc -o dist/modifiedforloop dist/woven_code/forloop.c",
     "outputforloop": "echo 'normal forloop: ' && dist/forloop && echo 'modified forloop: ' && dist/modifiedforloop",
     "buildrunforloop": "npm run clear && npm run build && npm run forloop",
     "buildrunreduced": "npm run clear && npm run build && npm run reduced",
+    "buildrunnvision": "npm run clear && npm run build && npm run nvision",
     "buildrunonnxtoc": "npm run clear && npm run build && npm run onnxtoc",
     "buildruncompileforloop": "npm run clear && npm run build && npm run forloop && npm run compileforloop && npm run outputforloop"
   },
@@ -46,11 +48,11 @@
   "description": "",
   "dependencies": {
     "@specs-feup/clava": "3.0.32",
-    "@specs-feup/clava-code-transforms": "^1.0.0",
     "@specs-feup/clava-flow": "^1.0.1",
     "@specs-feup/clava-lite-benchmarks": "^1.0.0",
     "@specs-feup/clava-visualization": "1.0.5",
     "@specs-feup/flow": "^1.0.3",
+    "@specs-feup/clava-code-transforms": "^1.2.0",
     "typescript": "^5.8.2"
   },
   "devDependencies": {
