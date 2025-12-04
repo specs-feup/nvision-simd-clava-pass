@@ -1,0 +1,6 @@
+#!/usr/bin/sh
+
+raw_args_string="$*"
+clava_argv_string="\"cli-args\": \"$raw_args_string\""
+
+npx clava classic dist/js/cli.js -j -ncg --argv "$clava_argv_string"

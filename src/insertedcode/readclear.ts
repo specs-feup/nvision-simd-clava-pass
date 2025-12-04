@@ -1,7 +1,12 @@
-export const FW_DECL_READ_CLEAR: string = `
+export const FW_DECL_READ_CLEAR_SW: string = `
 static signed int __nvision_sim_accum = 0;
 inline static int __read_clear();
 `;
+
+export const FW_DECL_READ_CLEAR_HW: string = `
+inline static int __read_clear();
+`;
+
 
 export const HW_READ_CLEAR_CODE: string = `
 inline static int __read_clear() {

@@ -18,7 +18,7 @@ import { areAllTheSameLiteral } from "./constprop/constprop.js";
 import { FW_DECL_CODE_8, SW_MAC_CODE_8, HW_MAC_CODE_8, DOT_PROD_CODE_8 } from "./insertedcode/8bit.js";
 import { FW_DECL_CODE_16, SW_MAC_CODE_16, HW_MAC_CODE_16, DOT_PROD_CODE_16 } from "./insertedcode/16bit.js";
 import { FW_DECL_CODE_32, SW_MAC_CODE_32, HW_MAC_CODE_32, DOT_PROD_CODE_32 } from "./insertedcode/32bit.js";
-import { FW_DECL_READ_CLEAR, SW_READ_CLEAR_CODE, HW_READ_CLEAR_CODE } from "./insertedcode/readclear.js";
+import { SW_READ_CLEAR_CODE, HW_READ_CLEAR_CODE, FW_DECL_READ_CLEAR_SW, FW_DECL_READ_CLEAR_HW } from "./insertedcode/readclear.js";
 
 function bitwidthInRv32(type: string): number | undefined {
     if (type.includes("char")) return 8;
@@ -594,11 +594,13 @@ export class VecMulAccumulationReplacer {
 
 function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
     for (const file of Clava.getProgram().files) {
+        console.log('Found a file')
         if (!file.isHeader) {
+            console.log('Its not a header');
             file.insert("before", FW_DECL_CODE_8);
             file.insert("before", FW_DECL_CODE_16);
             file.insert("before", FW_DECL_CODE_32);
-            file.insert("before", FW_DECL_READ_CLEAR);
+            file.insert("before", useSoftwareSimInstructions ? FW_DECL_READ_CLEAR_SW : FW_DECL_READ_CLEAR_HW);
         }
     }
     Clava.rebuild();

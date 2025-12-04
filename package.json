@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "main": "dist/js/index.js",
   "bin": {
-    "simd-pass": "./experiment"
+    "simd-pass": "./cli-helper"
   },
   "files": [
     "src",
@@ -29,7 +29,7 @@
     "test:cfg:writes": "cross-env NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" jest --detectOpenHandles --forceExit -- src/cfg/writes.test.ts",
     "clear": "rm -rf dist",
     "clearall": "rm -rf dist node_modules package-lock.json",
-    "build": "tsc",
+    "build": "tsc && npm link",
     "forloop": "npx clava classic dist/js/index.js -j -p src/input/forloop.c -o dist/",
     "reduced": "npx clava classic dist/js/index.js -j -p src/input/reduced.c -o dist/",
     "onnxtoc": "npx clava classic dist/js/index.js -j -p src/input/ad01_int8.c -o dist/",
