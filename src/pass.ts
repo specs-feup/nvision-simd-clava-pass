@@ -11,9 +11,6 @@ import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormat
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { valueIs } from "./cfg/valueIs.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
-import { generateRandomString } from "./utils/randomString.js";
-import { getLastWrites } from "./cfg/writes.js";
-import { areAllTheSameLiteral } from "./constprop/constprop.js";
 // import { FW_DECL_CODE_4, SW_MAC_CODE_4, HW_MAC_CODE_4, DOT_PROD_CODE_4 } from "./insertedcode/4bit.js";
 import { FW_DECL_CODE_8, SW_MAC_CODE_8, HW_MAC_CODE_8, DOT_PROD_CODE_8 } from "./insertedcode/8bit.js";
 import { FW_DECL_CODE_16, SW_MAC_CODE_16, HW_MAC_CODE_16, DOT_PROD_CODE_16 } from "./insertedcode/16bit.js";
