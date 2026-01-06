@@ -52,7 +52,7 @@
     "@specs-feup/clava-lite-benchmarks": "^1.0.0",
     "@specs-feup/clava-visualization": "1.0.5",
     "@specs-feup/flow": "^1.0.3",
-    "@specs-feup/clava-code-transforms": "^1.2.0",
+    "@specs-feup/clava-code-transforms": "^1.2.1",
     "typescript": "^5.8.2"
   },
   "devDependencies": {
