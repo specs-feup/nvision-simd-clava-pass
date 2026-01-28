@@ -1,6 +1,6 @@
-import Query from "@specs-feup/lara/api/weaver/Query.js"
-import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression, Cast, UnaryOp, ParenExpr } from "@specs-feup/clava/api/Joinpoints.js"
-import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js"
+import Query from "@specs-feup/lara/api/weaver/Query.js";
+import { Loop, Statement, ReturnStmt, GotoStmt, Break, Continue, Varref, BinaryOp, Joinpoint, Vardecl, Call, ArrayAccess, FunctionJp, Op, Body, Program, Expression, Cast, UnaryOp, ParenExpr, InitList } from "@specs-feup/clava/api/Joinpoints.js";
+import ClavaJoinPoints from "@specs-feup/clava/api/clava/ClavaJoinPoints.js";
 import { propagateAndFoldConstants } from "./constprop/propandfold.js";
 import { isConstantIn } from "./utils/constants.js";
 import { isVarrefOf } from "./utils/varReferences.js";
@@ -11,6 +11,7 @@ import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormat
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { valueIs } from "./cfg/valueIs.js";
 import Clava from "@specs-feup/clava/api/clava/Clava.js";
+import { VectorReduceSimplificator } from "@specs-feup/clava-code-transforms/VectorReduceSimplification";
 // import { FW_DECL_CODE_4, SW_MAC_CODE_4, HW_MAC_CODE_4, DOT_PROD_CODE_4 } from "./insertedcode/4bit.js";
 import { FW_DECL_CODE_8, SW_MAC_CODE_8, HW_MAC_CODE_8, DOT_PROD_CODE_8 } from "./insertedcode/8bit.js";
 import { FW_DECL_CODE_16, SW_MAC_CODE_16, HW_MAC_CODE_16, DOT_PROD_CODE_16 } from "./insertedcode/16bit.js";
@@ -213,11 +214,11 @@ export class VecMulAccumulationReplacer {
     private currentMacBitWidthLeft: MacBitWidth | undefined;
     private currentMacBitWidthRight: MacBitWidth | undefined;
     private _transformations: number = 0;
-    
+
     public get transformations(): number {
         return this._transformations;
     }
-    
+
     private validLoops: ValidLoopInfo[];
     private silent: boolean;
     private cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData>;
@@ -539,7 +540,7 @@ export class VecMulAccumulationReplacer {
     }
 
     private getSubstituteFunction(macBitWidth: MacBitWidth): FunctionJp | undefined {
-        switch(macBitWidth) {
+        switch (macBitWidth) {
             case MacBitWidth.FOUR_BIT: return Query.search(FunctionJp, { name: `__dot_prod_4b` }).getFirst();
             case MacBitWidth.EIGHT_BIT: return Query.search(FunctionJp, { name: `__dot_prod_8b` }).getFirst();
             case MacBitWidth.SIXTEEN_BIT: return Query.search(FunctionJp, { name: `__dot_prod_16b` }).getFirst();
@@ -591,9 +592,7 @@ export class VecMulAccumulationReplacer {
 
 function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
     for (const file of Clava.getProgram().files) {
-        console.log('Found a file')
         if (!file.isHeader) {
-            console.log('Its not a header');
             file.insert("before", FW_DECL_CODE_8);
             file.insert("before", FW_DECL_CODE_16);
             file.insert("before", FW_DECL_CODE_32);
@@ -603,13 +602,40 @@ function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
     Clava.rebuild();
 }
 
+/**
+ * Needed so large init lists (array declarations) don't slow down the code to a crawl.
+ * Replaces every instance of InitList with an generic expression literal that contains
+ * all the data (elements) within, hiding them from queries and the like.
+ * 
+ * https://github.com/specs-feup/clava/issues/214
+ */
+function bypassLargeInitLists(): void {
+    for (const initList of Query.search(InitList).get()) {
+        const blob = initList.code;
+        const blobExpr = ClavaJoinPoints.exprLiteral(blob);
+        initList.removeChildren();
+        initList.setFirstChild(blobExpr);
+    }
+
+    Clava.rebuild();
+}
+
 export function applyPass(useSoftwareSimInstructions: boolean, silent: boolean = true): number {
+    bypassLargeInitLists();
     attachNecessaryFunctions(useSoftwareSimInstructions);
 
-    if (!silent) console.log(`Propagated & folded constants a total of ${propagateAndFoldConstants()} times`);
+    const propagateAndFoldCount: number = propagateAndFoldConstants();
+    if (!silent) {
+        console.log(`Propagated & folded constants a total of ${propagateAndFoldCount} times`);
+    }
 
     Clava.pushAst();
 
+    const vrs: VectorReduceSimplificator = new VectorReduceSimplificator(silent);
+    const vrsCount = vrs.simplify();
+    if (!silent) {
+        console.log(`Simplified a total of ${vrsCount} vector reduces`);
+    }
 
     const cfg: ClavaFlowGraph.Class<ClavaFlowGraph.Data, ClavaFlowGraph.ScratchData> = Graph.create()
         .apply(new ClavaCfgGenerator(Query.root() as Program));

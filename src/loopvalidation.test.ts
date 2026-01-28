@@ -13,7 +13,7 @@ describe("Matrix-vector multiplication with nested loop test case", () => {
     beforeAll(() => {
         registerSourceCodeOnce(nestedForloopCode);
         
-        vmar = new VecMulAccumulationReplacer(4);
+        vmar = new VecMulAccumulationReplacer(false);
 
         console.log((Query.root() as Joinpoint).code);
     });

@@ -1,4 +1,4 @@
-import { Expression, Literal, MemberAccess, Program, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
+import { Expression, Joinpoint, Literal, MemberAccess, Program, UnaryOp, Vardecl, Varref } from "@specs-feup/clava/api/Joinpoints.js";
 import Query from "@specs-feup/lara/api/weaver/Query.js";
 import { isVarrefOf } from "../utils/varReferences.js"
 import { isConstant } from "../utils/constants.js";
@@ -6,6 +6,7 @@ import Graph from "@specs-feup/flow/graph/Graph";
 import ClavaCfgGenerator from "@specs-feup/clava-flow/transformation/ClavaCfgGenerator";
 import ClavaFlowGraph from "@specs-feup/clava-flow/ClavaFlowGraph";
 import { getLastWrites } from "../cfg/writes.js";
+import ClavaFlowDotFormatter from "@specs-feup/clava-flow/dot/ClavaFlowDotFormatter";
 
 export function areAllTheSameLiteral(exprs: Expression[]): boolean {
     if (exprs.filter(expr => !(expr instanceof Literal)).length !== 0) return false;

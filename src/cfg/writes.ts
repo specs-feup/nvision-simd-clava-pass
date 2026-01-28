@@ -26,9 +26,9 @@ function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, che
     }
 
     let searchStartNode: Joinpoint | undefined;
-    
+
     //it may be a variable declaration node but not of variable being searched
-    if (currentNode.is(ReturnNode) || currentNode.is(ExpressionNode) || currentNode.is(VariableDeclarationNode)) { 
+    if (currentNode.is(ReturnNode) || currentNode.is(ExpressionNode) || currentNode.is(VariableDeclarationNode)) {
         searchStartNode = currentNode.jp;
     }
     else if (currentNode.is(ConditionNode) && !currentNode.is(ForEachNode)) {
@@ -69,10 +69,13 @@ function getLastWritesHelper(vardecl: Vardecl, currentNode: ClavaNode.Class, che
  */
 export function getLastWrites(cfg: ClavaFlowGraph.Class, varref: Varref): Expression[] {
     const initialCfgNode: ClavaNode.Class | undefined = findInCfg(cfg, varref);
-    if (initialCfgNode === undefined) throw new Error(`Tried to find ${varref.code} of line ${varref.line} in cfg but was unable to`);
+    if (initialCfgNode === undefined) {
+        console.error(`Tried to find ${varref.code} of line ${varref.line} in cfg but was unable to`);
+        return [];
+    }
+
     if (varref.vardecl === undefined || varref.vardecl === null)
         throw new Error(`Cannot get assignments of variable «${varref.name}» from line ${varref.line} because it does not have a Vardecl (is it a function call?)`);
-
 
     return getLastWritesHelper(varref.vardecl, initialCfgNode, []);
 }
