@@ -44,7 +44,7 @@
     "buildruncompileforloop": "npm run clear && npm run build && npm run forloop && npm run compileforloop && npm run outputforloop"
   },
   "author": "",
-  "license": "ISC",
+  "license": "",
   "description": "",
   "dependencies": {
     "@specs-feup/clava": "3.0.32",

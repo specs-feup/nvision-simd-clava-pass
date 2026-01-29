@@ -590,7 +590,7 @@ export class VecMulAccumulationReplacer {
     }
 }
 
-function attachNecessaryFunctions(useSoftwareSimInstructions: boolean): void {
+function attachNecessaryForwardDecls(useSoftwareSimInstructions: boolean): void {
     for (const file of Clava.getProgram().files) {
         if (!file.isHeader) {
             file.insert("before", FW_DECL_CODE_8);
@@ -620,9 +620,15 @@ function bypassLargeInitLists(): void {
     Clava.rebuild();
 }
 
+/**
+ * Analyzes the AST and parallelizes suitable loops with NVISION's SIMD instructions
+ * @param useSoftwareSimInstructions if false will use in-line assembly that can be run on NVISION's accelerator, else will mock its behaviour using software bitshift operations
+ * @param silent true by default. If false, will output debug information
+ * @returns the number of loops transformed by the pass
+ */
 export function applyPass(useSoftwareSimInstructions: boolean, silent: boolean = true): number {
     bypassLargeInitLists();
-    attachNecessaryFunctions(useSoftwareSimInstructions);
+    attachNecessaryForwardDecls(useSoftwareSimInstructions);
 
     const propagateAndFoldCount: number = propagateAndFoldConstants();
     if (!silent) {
