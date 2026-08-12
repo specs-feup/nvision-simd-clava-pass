@@ -49,7 +49,7 @@
   "dependencies": {
     "@specs-feup/clava": "^3.5.2",
     "@specs-feup/clava-flow": "^1.0.4",
-    "@specs-feup/clava-lite-benchmarks": "^1.1.0",
+    "@specs-feup/clava-lite-benchmarks": "^1.1.1",
     "@specs-feup/clava-visualization": "^1.0.5",
     "@specs-feup/flow": "^1.0.5",
     "@specs-feup/clava-code-transforms": "^1.2.1",
