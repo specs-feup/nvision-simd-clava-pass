@@ -44,4 +44,6 @@ jobs:
 
 		# TODO: Add constprop again after Clava 4
       - name: Run tests
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096      
         run: npm run test -- --testPathIgnorePatterns=src/constprop/constprop.test.ts
